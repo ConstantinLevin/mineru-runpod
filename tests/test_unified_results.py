@@ -396,3 +396,13 @@ def test_a_loss_only_the_parse_reports_still_marks_the_entry(monkeypatch):
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
     result = asyncio.run(handler.handler({"input": {"file_b64": "JVBERi0xLjQK"}}))
     assert result["results"][0]["degraded"]["count"] == 1
+
+
+def test_settings_mineru_did_not_note_are_reported_as_unknown(monkeypatch):
+    """A result without a note leaves all three unknown rather than guessed from
+    the request."""
+    _stub_run(monkeypatch)
+    result = asyncio.run(handler.handler({"input": {"file_b64": "JVBERi0xLjQK"}}))
+    assert result["ok"] is True
+    assert (result["tier"], result["ocr_mode"], result["image_analysis"]) == (None, None, None)
+

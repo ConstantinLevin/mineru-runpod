@@ -26,3 +26,97 @@ for key in ("RUNPOD_WEBHOOK_POST_OUTPUT", "RUNPOD_WEBHOOK_POST_STREAM"):
 # harness directly runs against its defaults — a different env prefix and
 # different input roots — and passes or fails for the wrong reason.
 import worker  # noqa: E402, F401
+
+import enum  # noqa: E402
+import json  # noqa: E402
+import types  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+class _RenderMode(enum.Enum):
+    DEFAULT = "default"
+    FULL = "full"
+
+
+class _FakeParseResult:
+    """What MinerU 4's `ParseResult` does for the worker: save itself, be re-read."""
+
+    def __init__(self, middle: dict) -> None:
+        self.middle = middle
+
+    def save(self, writer) -> None:
+        writer.write_string("markdown.md", "# body\n")
+        writer.write_string("middle_json.json", json.dumps(self.middle))
+        writer.write_string("structured_content.json", "{}")
+        writer.write("images/page_0_image_1.jpg", b"\xff\xd8jpeg")
+
+    @staticmethod
+    def from_json(text: str) -> "_FakeParseResult":
+        return _FakeParseResult(json.loads(text))
+
+    def markdown(self, *, mode=None, **_unused) -> str:
+        return f"rendered:{mode.value if mode else 'none'}"
+
+
+class _Writer:
+    def __init__(self, parent_dir: str = "") -> None:
+        self.parent = Path(parent_dir)
+
+    def write(self, path: str, data: bytes) -> None:
+        target = self.parent / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+
+    def write_string(self, path: str, data: str) -> None:
+        self.write(path, data.encode("utf-8"))
+
+
+@pytest.fixture
+def fake_mineru(monkeypatch):
+    """A stand-in `mineru` package for tests that run the worker's own parse code.
+
+    MinerU is not installed where the suite runs. This reproduces the surface of
+    MinerU 4.0.12 that `worker.parse` touches (`parse_async`, `ParseResult.save` /
+    `from_json` / `markdown`, `FileBasedDataWriter`, `guess_suffix_by_bytes`, the
+    file-type tables, `RenderMode`) and records what the worker handed it.
+    `calls` holds each `parse_async` call; `state` picks what the stand-in
+    detects and notes (`suffix`, `tier`, `parse_mode`).
+    """
+    import sys  # noqa: PLC0415
+
+    from worker import parse  # noqa: PLC0415
+
+    calls: list[dict] = []
+    state = {"suffix": "pdf", "tier": "advanced", "parse_mode": "ocr"}
+
+    async def parse_async(path, **kwargs):
+        calls.append({"path": Path(path), "bytes": Path(path).read_bytes(), **kwargs})
+        return _FakeParseResult(
+            {"extensions": {"mineru": {"tier": state["tier"], "parse_mode": state["parse_mode"]}}}
+        )
+
+    def module(name: str, **attrs) -> types.ModuleType:
+        mod = types.ModuleType(name)
+        mod.__dict__.update(attrs)
+        monkeypatch.setitem(sys.modules, name, mod)
+        return mod
+
+    whole = frozenset({"docx", "html", "epub"})
+    module("mineru")
+    module("mineru.parser", parse_async=parse_async)
+    module("mineru.parser.base", ParseResult=_FakeParseResult)
+    module("mineru.parser.writer", FileBasedDataWriter=_Writer)
+    module(
+        "mineru.parser.file_type",
+        guess_suffix_by_bytes=lambda data, file_path=None: state["suffix"],
+    )
+    module(
+        "mineru.filetypes",
+        PARSEABLE_EXTENSIONS=frozenset({"pdf", "png", "jpg", "tiff"}) | whole,
+        batch_effective_parse_tier=lambda tier, ext: "flash" if ext in whole else tier,
+    )
+    module("mineru.render")
+    module("mineru.render.contracts", RenderMode=_RenderMode)
+    monkeypatch.setattr(parse, "MINERU_AVAILABLE", True)
+    return types.SimpleNamespace(calls=calls, state=state, result_type=_FakeParseResult)

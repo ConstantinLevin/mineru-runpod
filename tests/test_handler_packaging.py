@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import json
@@ -179,3 +180,73 @@ def test_build_zip_bytes_roundtrip(tmp_path):
     assert "markdown.md" in names
     assert "structured_content.json" in names
     assert "images/fig1.png" in names
+
+
+# -----------------------------------------------------------------------------
+# What the worker's own parse code leaves in the output directory
+# (stand-in package: `fake_mineru`, conftest.py)
+# -----------------------------------------------------------------------------
+
+
+def _read_inline(**job_input) -> dict:
+    payload = base64.b64encode(b"%PDF-1.7 fake").decode("ascii")
+    return asyncio.run(handler.handler({
+        "input": {"file_b64": payload, "transport": "inline", **job_input}
+    }))
+
+
+def test_the_result_is_saved_in_minerus_own_layout(fake_mineru):
+    entry = _read_inline()["results"][0]
+    assert entry["markdown"] == "# body\n"
+    assert entry["middle_json"]["extensions"]
+    assert entry["structured_content"] == {}
+    assert base64.b64decode(entry["images"]["page_0_image_1.jpg"]) == b"\xff\xd8jpeg"
+
+
+def test_the_full_mode_markdown_is_written_beside_the_default_one(fake_mineru):
+    entry = _read_inline()["results"][0]
+    assert entry["markdown_full"] == "rendered:full"
+
+
+# -----------------------------------------------------------------------------
+# The full-mode markdown is the worker's own file
+# -----------------------------------------------------------------------------
+
+def test_a_full_mode_render_that_fails_costs_that_file_not_the_parse(fake_mineru, monkeypatch):
+    """`markdown_full` is built by the worker after MinerU has saved the result it
+    was paid for. If rendering it fails, the saved files still ship and the loss is
+    reported rather than dropped."""
+    def broken(self, *, mode=None, **_unused):
+        if mode is not None and mode.value == "full":
+            raise RuntimeError("cannot render this document in full mode")
+        return "default"
+
+    monkeypatch.setattr(fake_mineru.result_type, "markdown", broken)
+    result = _read_inline()
+
+    assert result["ok"] is True
+    entry = result["results"][0]
+    assert entry["markdown"] == "# body\n"
+    assert entry["markdown_full"] == ""  # nothing of it ships
+    assert entry["degraded"]["count"] == 1
+    (item,) = entry["degraded"]["items"]
+    assert (item["artifact"], item["file"], item["reason"], item["error_type"]) == (
+        "markdown_full", "markdown_full.md", "unreadable", "RuntimeError",
+    )
+
+
+def test_a_full_mode_file_that_fails_midway_is_not_left_behind(fake_mineru, monkeypatch):
+    """A half-written markdown_full.md would ship and read as the document."""
+    real_write = Path.write_text
+
+    def failing_write(self, data, *args, **kwargs):
+        if self.name == "markdown_full.md":
+            real_write(self, "# h", *args, **kwargs)
+            raise OSError("no space left on device")
+        return real_write(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing_write)
+    entry = _read_inline()["results"][0]
+    assert entry["markdown_full"] == ""  # nothing of it ships
+    assert entry["degraded"]["count"] == 1
+

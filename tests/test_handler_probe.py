@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 
 import pytest
 
 import handler
+from worker import parse
 
 
 def test_handler_probe_mode_can_be_turned_off(monkeypatch):
@@ -86,3 +88,32 @@ def test_the_probe_reports_where_mineru_looks_for_its_models(monkeypatch):
     env = asyncio.run(handler.handler({"input": {"probe": True}}))["probe"]["env"]
     assert env["MINERU_HOME"] == "/opt/mineru"
     assert env["MINERU_MODEL_SOURCE"] == "local"
+
+
+# -----------------------------------------------------------------------------
+# The version a worker reports: the installed distribution's, not an attribute
+# -----------------------------------------------------------------------------
+
+
+def test_the_reported_version_is_the_installed_one(monkeypatch):
+    monkeypatch.setattr(parse.metadata, "version", lambda name: "4.0.12" if name == "mineru" else "x")
+    assert parse.installed_version() == "4.0.12"
+
+
+def test_the_version_is_unknown_only_when_the_package_has_none(monkeypatch):
+    def missing(name):
+        raise parse.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(parse.metadata, "version", missing)
+    assert parse.installed_version() == "unknown"
+
+
+def test_the_version_survives_a_parser_that_cannot_be_imported(monkeypatch):
+    """A broken dependency used to replace the version with an error string in
+    every response, which hides the one fact that says what was deployed."""
+    monkeypatch.setattr(parse.metadata, "version", lambda name: "4.0.12")
+    monkeypatch.setitem(sys.modules, "mineru.parser", None)  # makes the import raise
+    available, version, import_error = parse.probe_mineru()
+    assert available is False
+    assert version == "4.0.12"
+    assert "mineru.parser" in import_error
