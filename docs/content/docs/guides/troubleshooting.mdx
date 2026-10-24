@@ -38,7 +38,7 @@ What to look at:
 |---|---|
 | `tier` | Present after a successful parse. The tier that was asked for. If you set `basic` but see `advanced`, your caller isn't sending what you think it is. The tier MinerU actually used is the top-level `tier` of the response. |
 | `input_format` | Present after a successful parse and auto-detected from bytes. It is a coarse label (`pdf`, `image`, `ooxml` for any ZIP container, or `unknown`) kept for telemetry: whether MinerU reads the file is MinerU's call, made inside the parse. A PDF URL that returned an HTML page is therefore no longer refused up front; MinerU 4 reads HTML, so the job succeeds with the page's text. See [Input formats](/guides/input-formats/#when-the-type-is-not-what-you-meant). |
-| `model_dir` | Best-effort path to a Hugging Face cache snapshot of a MinerU model. MinerU 4 keeps its baked models in `$MINERU_HOME/models`, not in that cache, so this is `null` on a normal worker; a `probe: true` job shows the layout. |
+| `model_dir` | Best-effort path to a Hugging Face cache snapshot of a MinerU model. MinerU 4 keeps its baked models in `$MINERU_HOME/models`, not in that cache, so this is `null` on a normal worker. A `probe: true` job does not list that directory; it echoes `MINERU_HOME`, `MINERU_MODEL_SOURCE` and the engine settings, which say where MinerU looks. |
 | `gpu.compute_capability` | 8.6 = Ampere (3090, A5000, A6000), 8.9 = Ada (4090, RTX 6000 Ada), 9.0 = Hopper (H100), 12.0 = Blackwell (crashed with the previous image; not re-tested on this one) |
 | `phase_ms.fetch_input` | If hundreds of seconds on a `file_url` job, the source URL is slow / failing |
 | `phase_ms.mineru_parse` | Per-page guidance for warm workers, **highly GPU- and content-dependent**: MinerU upstream cites **~0.5 s/page (2.12 fps) on an A100** for MinerU 3.4's VLM backend; we measured a range of **~1 s/page on uniform multi-page reports up to ~10 s/page on dense financial forms** on an A5000 24 GB (≈3.5 s/page is a reasonable single-number estimate) under MinerU 3.4's default `gpu_memory_utilization=0.5`. MinerU 3.4's pipeline backend was ~3–5 s/page across GPUs. **None of this is measured on MinerU 4 yet.** **First call on a fresh worker is much higher** (model load + vLLM warmup added ~90–130 s on MinerU 3.4). If a warm-worker call is 5× the expected per-page number for your GPU and content type, you're memory-bound and vLLM is swapping |
@@ -241,14 +241,13 @@ The observed restore retained the Python process, MinerU engine handle, vLLM chi
 
 **Symptom**: handler errors with `CUDA out of memory` mid-parse. `debug.gpu.total_memory_gb` shows your card has fewer GB than the workload needs.
 
-**Cause**: vLLM allocates KV cache up front based on `gpu_memory_utilization`
-(default 0.5). Concurrent jobs and unusually complex pages can exhaust the
+**Cause**: vLLM allocates KV cache up front, sized from a share of the card's memory. MinerU 3.4 gave it half the card (`gpu_memory_utilization=0.5`); MinerU 4 derives the share from a memory budget of its own, which `MINERU_VIRTUAL_VRAM_SIZE` moves (see [Scaling](/guides/scaling/)). Concurrent jobs and unusually complex pages can exhaust the
 remaining VRAM. A longer document does not steadily increase VRAM when pages
 are processed sequentially.
 
 **Fix**:
 - **Bump to a 48 GB pool** for the affected workload (`AMPERE_48`)
-- **Switch to the pipeline backend** which doesn't use vLLM and is documented at 4 GB minimum VRAM (per MinerU's hardware compatibility table), regardless of doc length
+- **Use tier `basic`**, which loads no VLM and so no vLLM KV cache; MinerU's own table gives its small models 2–8 GB of RAM depending on the engine, and it has not been measured on this image
 - **Reduce `MINERU_MAX_CONCURRENCY`** so fewer jobs share one worker
 - **Batch very long documents** for shorter retries, bounded job time, and smaller outputs; batching is not a VLM memory fix
 

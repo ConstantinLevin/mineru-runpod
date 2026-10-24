@@ -6,7 +6,7 @@ description: When 24 GB is enough, when you need 48 GB, and when to pick another
 The repo's default GPU pool is `ADA_24` (24 GB Ada — RTX 4090). The `MinerU2.5-Pro-2605-1.2B` VLM, which tiers `standard` and `advanced` of MinerU 4 load, fits in 24 GB with KV-cache headroom. In the measurements below, the 4090 was both faster per page and cheaper per page than the lower-hourly A5000/3090 (`AMPERE_24`). This page covers the cases where a different trade-off makes sense.
 
 <Callout type="warn" title="The measurements below are from MinerU 3.4">
-Every figure on this page — VRAM, seconds per page, the 5,039-page run — was taken on the MinerU 3.4.x runtime with vLLM's default `gpu_memory_utilization=0.5`. MinerU 4 sizes vLLM's GPU share from a memory budget of its own instead, which `MINERU_VIRTUAL_VRAM_SIZE` (GB) moves; the throughput and the VRAM it takes are to be measured again on this image, and until then the numbers here are the old runtime's, not this one's.
+Every figure on this page — VRAM, seconds per page, the 5,039-page run — was taken on the MinerU 3.4.x runtime with vLLM's default `gpu_memory_utilization=0.5`. MinerU 4 sizes vLLM's GPU share from a fixed 6 GB budget instead (a quarter of a 24 GB card), which `MINERU_VIRTUAL_VRAM_SIZE` (GB) moves — a lower value gives vLLM more; the throughput and the VRAM it takes are to be measured again on this image, and until then the numbers here are the old runtime's, not this one's.
 </Callout>
 
 ## TL;DR

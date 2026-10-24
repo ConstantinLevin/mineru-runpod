@@ -128,7 +128,7 @@ empty to use MinerU's defaults.
 
 | Env var | MinerU default | Description |
 |---|---|---|
-| `MINERU_VIRTUAL_VRAM_SIZE` | MinerU sizes it from the card (a fixed 6 GB budget on cards over 8 GB) | GB of VRAM MinerU plans with. MinerU derives vLLM's GPU memory share and its batch sizes from it, so raising it gives vLLM a larger share and lowering it a smaller one. The right value for this image is to be measured; the endpoint's setting is chosen from that measurement. |
+| `MINERU_VIRTUAL_VRAM_SIZE` | MinerU sizes it from the card (a fixed 6 GB budget on cards over 8 GB) | GB of VRAM MinerU plans with. MinerU 4.0.12 gives vLLM a share of `max(6 / V, 0.1)` of the card, with V this number (its own fixed 6 GB budget), so **raising it lowers vLLM's share and lowering it raises the share**: on a 24 GB card unset gives 0.25, `12` gives 0.5, `48` gives 0.13. It also scales MinerU's default batch sizes, which grow with V. The right value for this image is to be measured; the endpoint's setting is chosen from that measurement. |
 | `MINERU_PROCESSING_WINDOW_SIZE` | MinerU's default | Pages per processing window. Lower reduces peak VRAM on long documents; higher trades VRAM for throughput. |
 | `MINERU_PDF_RENDER_TIMEOUT` | `300` | Seconds before MinerU kills a hung PDF page render. Raise for very complex PDFs (`600`). |
 | `MINERU_PDF_RENDER_THREADS` | `3` | CPU threads for PDF page rasterization. Scale up on workers with more vCPUs (`8` on 16-vCPU pods) for image-heavy PDFs. |

@@ -18,7 +18,7 @@
         "input": {
           "name": "VRAM MinerU plans with (GB)",
           "type": "string",
-          "description": "MinerU sizes vLLM's GPU memory and its batches from this number of GB instead of the card's real size. Empty = MinerU's default: a fixed 6 GB budget on cards over 8 GB.",
+          "description": "GB of VRAM MinerU plans with instead of the card's real size. vLLM's share is 6/this, so a LOWER number gives vLLM MORE memory. Empty = the card's size.",
           "default": "",
           "advanced": true
         }
@@ -188,7 +188,7 @@
         "input": {
           "name": "MinerU PDF render threads",
           "type": "string",
-          "description": "CPU threads for PDF rasterization. Raise on high-vCPU pods for image-heavy PDFs. Empty = default 4.",
+          "description": "CPU threads for PDF rasterization. Raise on high-vCPU pods for image-heavy PDFs. Empty = MinerU's default (3).",
           "default": "",
           "advanced": true
         }

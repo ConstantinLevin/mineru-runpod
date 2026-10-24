@@ -18,7 +18,7 @@ Pick `transport` based on **how big the output is** and **what you want to do wi
 | `"inline"` | entry has text/JSON fields plus base64-encoded images, filterable via `formats` | Same ~20 MB cap | You want structured fields back in a JSON-only caller; small docs |
 | `"s3"` | entry has `tarball_url`: presigned URL to the same `.tar.gz` on an S3-compatible bucket | No gateway-response cap; worker RAM, disk, timeout, and provider limits still apply | Large docs and image-heavy reports; response stays tiny |
 
-All three modes produce the **same** underlying output — Markdown, content list, middle JSON, extracted images. The choice is purely about transport.
+All three modes produce the **same** underlying output — Markdown, full-mode Markdown, middle JSON, structured content, raw model output, extracted images. The choice is purely about transport.
 
 Every success response wraps each parsed file in a `results: [...]` entry. For a single-file submission the list has one element; reach into it with `result["results"][0]` (or `MineruClient.first(result)` for the Python client).
 
@@ -76,7 +76,7 @@ Response (truncated):
       "pages_requested": -1,
       "markdown": "# Heading\n\nBody text...",
       "structured_content": {"pages": [{"page_idx": 0, "blocks": [{"type": "text", "content": "..."}]}]},
-      "middle": {"...": "..."},
+      "middle_json": {"...": "..."},
       "images": {"img-1.png": "<base64>", "img-2.png": "<base64>"}
     }
   ]
@@ -87,7 +87,7 @@ Same 20 MB cap as `tarball_b64`. Worth it when the caller can't trivially untar 
 
 ## Filtering with `formats`
 
-For inline transport, `formats` whitelists which of the four artifacts ride back in the entry. Omitted keys are absent from the response — not present-as-empty. Useful when only the markdown matters and the images would otherwise add megabytes of base64 to the payload.
+For inline transport, `formats` whitelists which of the six artifacts ride back in the entry. Omitted keys are absent from the response — not present-as-empty. Useful when only the markdown matters and the images would otherwise add megabytes of base64 to the payload.
 
 **Just the markdown:**
 
@@ -103,7 +103,7 @@ For inline transport, `formats` whitelists which of the four artifacts ride back
 
 Response entry contains only `markdown` (plus the usual `basename` / `source` / `pages_requested`). The other keys are not present.
 
-**Markdown + content list, skip the images:**
+**Markdown + structured content, skip the images:**
 
 ```json
 {
@@ -120,7 +120,7 @@ Useful for RAG ingestion where the image blobs aren't needed and removing them s
 **Rules**:
 
 - Order doesn't matter. Duplicates collapse silently.
-- Empty list is rejected (`formats: []` → validation error). Omit the field to get all four.
+- Empty list is rejected (`formats: []` → validation error). Omit the field to get all six.
 - `formats` is a **no-op** for `tarball_b64` and `s3` transports. Those always ship the full tarball — filtering the contents of an archive would just confuse callers who later download it and find a missing file. If you want a partial set with those transports, extract the tarball and ignore the files you don't need.
 
 ## s3 (presigned URL)

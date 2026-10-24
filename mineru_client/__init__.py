@@ -3,7 +3,7 @@
 Two clients, same endpoint:
 
 - ``MineruClient`` — the native client. Full access to the worker's own request /
-  response shape (inline markdown, volume_path, format filtering, every backend).
+  response shape (inline markdown, volume_path, format filtering, tier / OCR mode / image analysis).
   Use this for new code.
 
     from mineru_client import MineruClient
@@ -24,7 +24,7 @@ Two clients, same endpoint:
     done = client.wait_for_task(task_id)
     client.download_results(done, "./out")
 
-Accepts PDF, image (PNG/JPEG/GIF/BMP/TIFF/WebP), DOCX, PPTX, XLSX.
+Accepts every file type MinerU 4 reads: PDF and images, Office, OpenDocument, RTF, EPUB, OFD, HTML, CSV/TSV.
 """
 
 from .api_compat import MineruApiClient
