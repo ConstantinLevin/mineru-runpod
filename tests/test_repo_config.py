@@ -162,23 +162,29 @@ def test_the_marker_does_not_excuse_another_unrecorded_file(verify, tmp_path) ->
 
 
 @pytest.mark.parametrize(
-    "unrecorded",
+    ("unrecorded", "content"),
     [
-        ".mineru_complete.bak",  # starts like the marker
-        "x.mineru_complete",     # ends like it
-        "mineru_complete",       # without the dot
-        ".hidden",               # any other dotfile
-        "Layout/PP-DocLayoutV2/extra.bin",  # beside a marker in a subdirectory
+        (".mineru_complete.bak", b"weights"),  # starts like the marker
+        ("x.mineru_complete", b"weights"),     # ends like it
+        ("mineru_complete", b"weights"),       # without the dot
+        (".mineru", b"weights"),               # a prefix of it
+        (".hidden", b"weights"),               # any other dotfile
+        ("Layout/PP-DocLayoutV2/extra.bin", b"weights"),     # beside a marker in a subdirectory
+        ("OCR/.mineru_complete/never.bin", b"weights"),      # under a directory of that name
+        ("empty.bin", b""),                    # the marker is empty, an unrecorded file may be too
     ],
 )
-def test_only_the_marker_itself_is_skipped(verify, tmp_path, unrecorded) -> None:
+def test_only_the_marker_itself_is_skipped(verify, tmp_path, unrecorded, content) -> None:
     """The exemption is one file name. A rule any wider (every dotfile, every name that
-    contains it, everything in a directory that has one) would pass a file of unknown
-    origin, which is what the check is there to stop."""
+    contains it or begins like it, everything in a directory that has one or is named
+    like it, every empty file) would pass a file of unknown origin, which is what the
+    check is there to stop."""
     _download(tmp_path, REPO, "Layout/PP-DocLayoutV2/model.onnx", EXPECTED)
     (tmp_path / REPO / ".mineru_complete").touch()
     (tmp_path / REPO / "Layout" / "PP-DocLayoutV2" / ".mineru_complete").touch()
-    (tmp_path / REPO / unrecorded).write_bytes(b"weights")
+    stray = tmp_path / REPO / unrecorded
+    stray.parent.mkdir(parents=True, exist_ok=True)
+    stray.write_bytes(content)
     (problem,) = verify.check(tmp_path, {REPO: EXPECTED})
     assert unrecorded in problem
 
