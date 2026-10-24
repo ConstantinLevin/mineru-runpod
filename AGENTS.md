@@ -18,8 +18,9 @@ version number would carry elsewhere.
 
 **Major** is reserved for an upstream engine major: a new major of `MinerU` or of
 its models. It is the one fact a template user acts on, because it is when output
-and behaviour actually move. The engine is minor-locked in `requirements.txt`
-(`mineru[core,vllm]>=3.4.0,<3.5.0`), so this cannot happen by accident.
+and behaviour actually move. The engine is pinned exactly in `requirements.txt`
+(`mineru[torch]==4.0.12`, with `mineru-vl-utils`, `docvortex` and the RunPod SDK), so a
+rebuild cannot change it by accident; moving the pin is always a deliberate edit.
 
 **A breaking change to the template's own contract ships on a minor.** A renamed
 job field, a default that flips, a value that used to be accepted and now is not.

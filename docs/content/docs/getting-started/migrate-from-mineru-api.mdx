@@ -13,7 +13,7 @@ shapes over a RunPod endpoint. It is a migration facade, not a complete clone
 of the cloud API.
 
 <Callout type="info" title="What this is — and isn't">
-This is a **trial and migration on-ramp**, not a permanent production interface. It lets you evaluate self-hosting against the SaaS with near-identical code. Once you've switched, the native [`MineruClient`](/getting-started/clients/) gives you the worker's richer features (inline markdown, format filtering, `volume_path`, the hybrid / http-client backends). Use the compat client to get in the door; use the native client long-term.
+This is a **trial and migration on-ramp**, not a permanent production interface. It lets you evaluate self-hosting against the SaaS with near-identical code. Once you've switched, the native [`MineruClient`](/getting-started/clients/) gives you the worker's richer features (inline markdown, format filtering, `volume_path`, the tier, OCR mode and image analysis). Use the compat client to get in the door; use the native client long-term.
 </Callout>
 
 ## Prerequisites
@@ -133,9 +133,9 @@ The response dicts have the same shape (`{"code": 0, "msg": "ok", "data": {...}}
 | MinerU API param | Maps to | Notes |
 |---|---|---|
 | `url` | worker `file_url` | URL-based submission (as on the SaaS single-task endpoint) |
-| `model_version` | `backend` | `pipeline` → `pipeline`, `vlm` → `vlm-auto-engine` |
-| `enable_formula` / `enable_table` | `formula_enable` / `table_enable` | direct |
-| `language` | `lang` | default `ch`, like MinerU; affects the `pipeline` backend only |
+| `model_version` | `tier` | `pipeline` → `basic`, `vlm` → `advanced` |
+| `enable_formula` / `enable_table` | — | MinerU 4 has no switch; `False` is refused (raises) |
+| `language` | — | accepted and not sent; MinerU 4 recognises the language itself |
 | `page_ranges` | `start_page` / `end_page` | single contiguous **1-based** range (`"5"` or `"2-6"`) |
 | `data_id` | echoed back in `get_task` | tracking id; see the gaps note below |
 | `callback` | not supported → raises | RunPod's webhook payload (raw `/status`) differs from MinerU's signed `{checksum, content}` callback; poll with `get_task` / `wait_for_task` |
@@ -167,7 +167,7 @@ The compat client raises a clear error rather than silently mis-parsing when you
 |---|---|
 | `create_task` / `get_task`, state machine, `full_zip_url` | ✅ supported (S3 configured) |
 | `model_version: "MinerU-HTML"` | ❌ no HTML-specialised model → raises |
-| `extra_formats` (`docx` / `html` / `latex`) | ❌ worker emits markdown + content_list + middle + images only → raises |
+| `extra_formats` (`docx` / `html` / `latex`) | ❌ worker emits MinerU 4's markdown, middle JSON, structured content and images only → raises |
 | `page_ranges` multi-range (`"2,4-6"`) | ❌ one contiguous slice per job → raises (submit separate tasks) |
 | `is_ocr`, `no_cache`, `cache_tolerance` | accepted, no-op (no worker equivalent) |
 | `callback` / `seed` | ❌ `callback` raises — RunPod webhooks deliver a different, unsigned payload than MinerU's signed `{checksum, content}` callback; `seed` accepted but unused |
@@ -181,7 +181,7 @@ Once you've validated the output and decided to stay, move to [`MineruClient`](/
 
 - **Inline markdown** without unpacking an archive (`transport: "inline"`, `formats: ["markdown"]`)
 - **Local / volume inputs** (`file_b64`, `volume_path`) — no need to host files at a URL first
-- **Every backend**, including `hybrid-*` and `*-http-client`
+- **Every tier and OCR setting** (`flash`, `standard`, `ocr_mode`, `image_analysis`)
 - **No S3 requirement** for getting results back
 
 The compat client's job is to get you comparing and migrating; the native client is where you live afterward.

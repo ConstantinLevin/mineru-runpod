@@ -4,11 +4,11 @@
 [![CI](https://github.com/sergeyshmakov/mineru-runpod/actions/workflows/ci.yml/badge.svg)](https://github.com/sergeyshmakov/mineru-runpod/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](pyproject.toml)
-[![MinerU](https://img.shields.io/badge/MinerU-3.4-purple)](https://github.com/opendatalab/MinerU)
+[![MinerU](https://img.shields.io/badge/MinerU-4.0-purple)](https://github.com/opendatalab/MinerU)
 [![Runpod](https://api.runpod.io/badge/sergeyshmakov/mineru-runpod)](https://console.runpod.io/hub/sergeyshmakov/mineru-runpod)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-fa6673.svg)](https://www.conventionalcommits.org/)
 
-Serverless [MinerU](https://github.com/opendatalab/MinerU) document parser on [RunPod](https://runpod.io?ref=31jdfpnq). MinerU 3.4.x runtime with the `MinerU2.5-Pro-2605-1.2B` VLM. Scales to zero; best-case warm parses measured about $0.0003 per page on a 24 GB serverless RTX 4090.
+Serverless [MinerU](https://github.com/opendatalab/MinerU) document parser on [RunPod](https://runpod.io?ref=31jdfpnq). MinerU 4.0.x runtime (pinned to 4.0.12) with the `MinerU2.5-Pro-2605-1.2B` VLM. Scales to zero; best-case warm parses on MinerU 3.4 measured about $0.0003 per page on a 24 GB serverless RTX 4090 -- not yet re-measured on MinerU 4.
 
 [Docs](https://mineru.shmakov.tools/) · [Get started on RunPod](https://runpod.io?ref=31jdfpnq) · [Blog](https://mineru.shmakov.tools/blog/)
 
@@ -24,7 +24,7 @@ from mineru_client import MineruClient
 client = MineruClient(endpoint_id="<your-endpoint-id>")
 result = client.parse_document(file_url="https://example.com/report.pdf", end_page=4)
 client.save_tarball(result, "./out/doc")
-# → markdown + content_list + middle.json + images
+# → markdown + markdown_full + middle_json + structured_content + images
 ```
 
 **curl (no SDK):**
@@ -38,11 +38,11 @@ curl -X POST "https://api.runpod.ai/v2/<endpoint-id>/runsync" \
 
 The response wraps each parsed file as an entry inside `results: [...]`. For a single document, the markdown sits at `output.results[0].markdown` — pipe it straight to a file: `curl ... | jq -r '.output.results[0].markdown' > report.md`.
 
-Accepts PDF, image (PNG/JPEG/GIF/BMP/TIFF/WebP), DOCX, PPTX, XLSX. Two orthogonal knobs control output — **transport** (`tarball_b64` / `inline` / `s3`) and **formats** — both covered in [Output modes](https://mineru.shmakov.tools/guides/output-modes/).
+Accepts every file type MinerU 4 reads: PDF and images, Office (DOC/DOCX/PPT/PPTX/XLS/XLSX), OpenDocument, RTF, EPUB, OFD, HTML and CSV/TSV. Two orthogonal knobs control output — **transport** (`tarball_b64` / `inline` / `s3`) and **formats** — both covered in [Output modes](https://mineru.shmakov.tools/guides/output-modes/).
 
 ## Why this exists
 
-- **MinerU** produces structured Markdown/JSON for text, charts, tables, and math. MinerU 3.4 also provides script-family OCR models through its pipeline backend. See the [paper](https://arxiv.org/abs/2604.04771), [repo](https://github.com/opendatalab/MinerU), and [model card](https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B) for the published evaluation scope.
+- **MinerU** produces structured Markdown/JSON for text, charts, tables, and math. MinerU 4 reads in four tiers (`flash`, `basic`, `standard`, `advanced`) and recognises the language itself. See the [paper](https://arxiv.org/abs/2604.04771), [repo](https://github.com/opendatalab/MinerU), and [model card](https://huggingface.co/opendatalab/MinerU2.5-Pro-2605-1.2B) for the published evaluation scope.
 - **RunPod Serverless** bills per-second and scales to zero. A 100-page document costs roughly $0.03 on a 24 GB serverless RTX 4090 instead of paying for an always-on GPU. See [RunPod pricing](https://www.runpod.io/pricing) for current rates.
 - Wiring the two together is the part this repo does for you. Deploy from the [RunPod Hub](https://runpod.io?ref=31jdfpnq) in one click, or fork the repo for full control.
 
@@ -85,9 +85,11 @@ Send `{"input": {...}}` to `/runsync` (or `/run`). The most-used fields:
 |---|---|---|---|
 | `file_url` / `file_b64` / `volume_path` | exactly one | — | Public URL, base64 bytes, or an absolute container path under the worker's input roots. Format auto-detected. |
 | `end_page` | no | `-1` | 0-based inclusive; `-1` = end of doc |
-| `backend` | no | `"vlm-auto-engine"` | `pipeline` / `vlm-auto-engine` / `hybrid-*` / `*-http-client` |
+| `tier` | no | `"advanced"` | `flash` / `basic` / `standard` / `advanced` -- how deeply a PDF or image is read |
+| `ocr_mode` | no | `"ocr"` | `ocr` (the model reads the text) / `txt` (the PDF's text layer) / `auto` |
+| `image_analysis` | no | `true` | Describe pictures and charts; acts only in tier `advanced` |
 | `transport` | no | `"tarball_b64"` | `tarball_b64` / `inline` / `s3` — how output ships back |
-| `formats` | no | all four | Subset of `markdown` / `content_list` / `middle` / `images` |
+| `formats` | no | all six | Subset of `markdown` / `markdown_full` / `middle_json` / `structured_content` / `model_output` / `images` |
 
 Responses wrap each file in a `results: [...]` list alongside a top-level `debug` block; failures set `ok=false` with a top-level `error`. The full field list, per-transport response shapes, and validation rules live in the **[API reference](https://mineru.shmakov.tools/reference/api/)** (mirrored from the docstring atop [`handler.py`](handler.py)).
 
@@ -106,7 +108,7 @@ Parsing accuracy is MinerU's domain; their published [OmniDocBench](https://gith
 | Scale-to-zero | ✅ ready to use | ⚠️ possible, needs extra setup | ❌ (always-on) | ❌ |
 | GPU support | GPU only | CPU or GPU | CPU | GPU required |
 | Equations | ✅ LaTeX | ✅ LaTeX | ❌ | ✅ LaTeX |
-| Multi-lang | ✅ script-family OCR models (pipeline backend) | per upstream README | EN only | per upstream README |
+| Multi-lang | ✅ language recognised by MinerU 4 itself | per upstream README | EN only | per upstream README |
 | Setup time | 5 min | 10 min | 30 min | 20 min |
 | License | MinerU Open Source License\* | **GPL-3.0 code + modified RAIL-M weights**\*\* | Apache 2.0 | MIT code + **CC-BY-NC 4.0 weights** |
 | Commercial SaaS | ✅ permitted below stated thresholds\* | ⚠️ depends on RAIL-M competitor clause\*\* | ✅ free | ⚠️ subject to CC-BY-NC non-commercial clause |
@@ -133,7 +135,7 @@ The docs site covers the rest:
 
 | Version part | Moves when |
 |---|---|
-| **Major** | MinerU itself has a major release (currently pinned `mineru[core,vllm]>=3.4.0,<3.5.0`) |
+| **Major** | MinerU itself has a major release (currently pinned `mineru[torch]==4.0.12`) |
 | **Minor** | New features, and breaking changes to the job contract -- these lead the release notes under **Job Contract Changes** |
 | **Patch** | Fixes and internal work |
 

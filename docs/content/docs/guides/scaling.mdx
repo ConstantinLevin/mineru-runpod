@@ -4,8 +4,8 @@ description: Worker-level knobs for concurrency, memory hygiene, and MinerU's ow
 ---
 
 This page collects the worker-level tuning knobs — the things you set
-once on the endpoint, not per request. For per-request options (backend
-selection, page range, output format), see [API reference](/reference/api/).
+once on the endpoint, not per request. For per-request options (tier,
+OCR mode, page range, output format), see [API reference](/reference/api/).
 
 All values listed here are set as **environment variables on the
 RunPod endpoint**, not in the job payload. You'll find them under the
@@ -24,17 +24,17 @@ jobs a single worker handles in parallel. Default `1`.
 | Value | When to use |
 |---|---|
 | `1` *(default)* | Safe on every supported GPU type. Each worker handles one job at a time; concurrency comes from running more workers. |
-| `2-3` | Only on **≥24 GB GPUs** with the `vlm-auto-engine` backend, or on **any GPU** with the `pipeline` backend. Watch VRAM via `nvidia-smi` or the `gpu.memory` fields in worker logs before raising. |
+| `2-3` | Only on **≥24 GB GPUs** in tiers `standard` / `advanced`, or on **any GPU** in tiers `basic` / `flash`. Watch VRAM via `nvidia-smi` or the `gpu.memory` fields in worker logs before raising. |
 
 MinerU's own `mineru-api` server defaults this to `3`, but that's a
 guidance value tuned for their full-fat hosted setup — for a generic
 serverless template across all of RunPod's GPU pool, `1` is the safe
 baseline.
 
-**Why not just always run higher concurrency?** MinerU's VLM backend
-wraps vLLM, which pre-allocates a large KV cache at engine init. Two
+**Why not just always run higher concurrency?** MinerU's VLM tiers
+run on vLLM, which pre-allocates a large KV cache at engine init. Two
 concurrent jobs share that cache; on a 16 GB GPU you OOM around 2
-concurrent VLM parses. The pipeline backend is more frugal but still
+concurrent VLM parses. Tiers `basic` and `flash` are more frugal but still
 bound by per-page VRAM. See [Choosing a GPU](/guides/choosing-gpu/)
 for the memory math.
 
@@ -128,14 +128,10 @@ empty to use MinerU's defaults.
 
 | Env var | MinerU default | Description |
 |---|---|---|
-| `MINERU_PROCESSING_WINDOW_SIZE` | `64` | Pages per pipeline batch window. Lower (`32`) reduces peak VRAM on long documents; higher (`128`) trades VRAM for throughput. **Only affects the `pipeline` backend.** |
+| `MINERU_VIRTUAL_VRAM_SIZE` | MinerU sizes it from the card (a fixed 6 GB budget on cards over 8 GB) | GB of VRAM MinerU plans with. MinerU derives vLLM's GPU memory share and its batch sizes from it, so raising it gives vLLM a larger share and lowering it a smaller one. The right value for this image is to be measured; the endpoint's setting is chosen from that measurement. |
+| `MINERU_PROCESSING_WINDOW_SIZE` | MinerU's default | Pages per processing window. Lower reduces peak VRAM on long documents; higher trades VRAM for throughput. |
 | `MINERU_PDF_RENDER_TIMEOUT` | `300` | Seconds before MinerU kills a hung PDF page render. Raise for very complex PDFs (`600`). |
-| `MINERU_PDF_RENDER_THREADS` | `4` | CPU threads for PDF page rasterization. Scale up on workers with more vCPUs (`8` on 16-vCPU pods) for image-heavy PDFs. |
-
-For the `hybrid-http-client` backend specifically, MinerU exposes one
-more knob: `MINERU_HYBRID_BATCH_RATIO` (defaults to ~4) for VRAM
-reduction. Only relevant if you're pointing the worker at an external
-vLLM server with limited VRAM.
+| `MINERU_PDF_RENDER_THREADS` | `3` | CPU threads for PDF page rasterization. Scale up on workers with more vCPUs (`8` on 16-vCPU pods) for image-heavy PDFs. |
 
 ## Worker logs
 
@@ -169,6 +165,7 @@ See [Troubleshooting → reading worker logs](/guides/troubleshooting/#reading-w
 | `REFRESH_WORKER_AFTER_PAGES` | `0` (off) | Alternative to jobs threshold for mixed workloads |
 | `MINERU_MAX_PAGES_PER_JOB` | `0` (off) | Turn away over-large page ranges before they run |
 | `LOG_FORMAT` | `json` | Switch to `text` for local dev |
-| `MINERU_PROCESSING_WINDOW_SIZE` | MinerU default (`64`) | Lower if OOM on long docs (pipeline backend) |
+| `MINERU_VIRTUAL_VRAM_SIZE` | MinerU default | Move vLLM's GPU memory share and MinerU's batch sizes |
+| `MINERU_PROCESSING_WINDOW_SIZE` | MinerU default | Lower if OOM on long docs |
 | `MINERU_PDF_RENDER_TIMEOUT` | MinerU default (`300` s) | Raise for very complex PDFs |
-| `MINERU_PDF_RENDER_THREADS` | MinerU default (`4`) | Raise on high-vCPU pods for image-heavy PDFs |
+| `MINERU_PDF_RENDER_THREADS` | MinerU default (`3`) | Raise on high-vCPU pods for image-heavy PDFs |

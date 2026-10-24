@@ -43,7 +43,7 @@ Raising `MINERU_MAX_CONCURRENCY` to `2-3` makes one worker run several jobs thro
 
 It only pays off when a **single request doesn't saturate the GPU** — a stream of small documents, or jobs with heavy non-GPU phases (download, PDF rasterization, S3 upload) that leave the GPU idle. Overlapping job A's I/O with job B's GPU time fills those gaps and packs more parses into one GPU-second. For large or dense documents that already keep the GPU busy, in-worker concurrency just adds memory pressure for little gain — add a worker instead.
 
-Only raise it on **≥24 GB GPUs** (`vlm-auto-engine`) or any GPU (`pipeline`), and watch VRAM via `nvidia-smi` or the `gpu.memory` log fields. See [Scaling and tuning → Concurrency](/guides/scaling/#concurrency) for the knob itself.
+Only raise it on **≥24 GB GPUs** (tiers `standard` / `advanced`) or any GPU (tiers `basic` / `flash`), and watch VRAM via `nvidia-smi` or the `gpu.memory` log fields. See [Scaling and tuning → Concurrency](/guides/scaling/#concurrency) for the knob itself.
 
 ### Not a lever: the engine window
 

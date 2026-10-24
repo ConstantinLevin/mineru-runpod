@@ -6,7 +6,7 @@ description: Pick between tarball_b64, inline, and S3 presigned URLs with the tr
 The worker uses one transport choice plus an inline-only filter:
 
 - **`transport`** — how the output is shipped (`tarball_b64` / `inline` / `s3`).
-- **`formats`** — for inline transport, which subset of `markdown` / `content_list` / `middle` / `images` rides along in the response.
+- **`formats`** — for inline transport, which subset of `markdown` / `markdown_full` / `middle_json` / `structured_content` / `model_output` / `images` rides along in the response.
 
 Pick `transport` based on **how big the output is** and **what you want to do with it**. Use `formats` to skip artifacts you don't need.
 
@@ -75,7 +75,7 @@ Response (truncated):
       "source": "url:https://example.com/report.pdf",
       "pages_requested": -1,
       "markdown": "# Heading\n\nBody text...",
-      "content_list": [{"type": "text", "page_idx": 0, "text": "..."}],
+      "structured_content": {"pages": [{"page_idx": 0, "blocks": [{"type": "text", "content": "..."}]}]},
       "middle": {"...": "..."},
       "images": {"img-1.png": "<base64>", "img-2.png": "<base64>"}
     }
@@ -101,7 +101,7 @@ For inline transport, `formats` whitelists which of the four artifacts ride back
 }
 ```
 
-Response entry contains only `markdown` (plus the usual `basename` / `source` / `pages_requested`). `content_list`, `middle`, and `images` are not present.
+Response entry contains only `markdown` (plus the usual `basename` / `source` / `pages_requested`). The other keys are not present.
 
 **Markdown + content list, skip the images:**
 
@@ -110,7 +110,7 @@ Response entry contains only `markdown` (plus the usual `basename` / `source` / 
   "input": {
     "file_url": "https://example.com/report.pdf",
     "transport": "inline",
-    "formats": ["markdown", "content_list"]
+    "formats": ["markdown", "structured_content"]
   }
 }
 ```

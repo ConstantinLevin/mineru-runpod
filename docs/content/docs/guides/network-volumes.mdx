@@ -26,7 +26,7 @@ Mount a network volume once, upload the corpus to `/runpod-volume/inputs/`, and 
 {
   "input": {
     "volume_path": "/runpod-volume/inputs/2024-q3-report.pdf",
-    "backend": "vlm-auto-engine"
+    "tier": "advanced"
   }
 }
 ```
@@ -49,9 +49,7 @@ Compare the [current storage price](https://www.runpod.io/pricing) with the tran
 
 ## Model weights are already baked in
 
-**You don't need to do anything here** — both model dependencies (`opendatalab/MinerU2.5-Pro-2605-1.2B` for the VLM backend and `opendatalab/PDF-Extract-Kit-1.0` for the pipeline backend) are **baked into the worker image at build time**, at `/root/.cache/huggingface/`. No Cached Models setup, no Network Volume, no runtime download.
-
-If you'd rather slim the image and rely on RunPod's Cached Models feature for the VLM only (which has a single-model dashboard limit), fork the Dockerfile to skip the `RUN snapshot_download` step. The pipeline backend would then need either a Network Volume or `HF_HUB_OFFLINE=0` for runtime downloads.
+**You don't need to do anything here** — MinerU's `standard` model set (its small-model bundle and the `opendatalab/MinerU2.5-Pro-2605-1.2B` VLM, about 3 GB per MinerU's documentation) is **baked into the worker image at build time**, under `$MINERU_HOME/models` (`/opt/mineru/models`), and the worker loads it offline (`MINERU_MODEL_SOURCE=local`). No Cached Models setup, no Network Volume, no runtime download. Which revisions are baked is pinned in the Dockerfile and checked at build time.
 
 ## Problem 2: sharing outputs between jobs
 

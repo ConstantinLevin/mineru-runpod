@@ -11,10 +11,10 @@ const quickStartCode = `from mineru_client import MineruClient
 client = MineruClient(endpoint_id="<your-endpoint-id>")
 result = client.parse_document(file_url="https://example.com/report.pdf", end_page=4)
 client.save_tarball(result, "./out/doc")
-# → markdown + content_list + middle.json + images`;
+# → markdown + structured content + middle JSON + images`;
 
 const homeDescription =
-	"Deploy MinerU 3.4 on RunPod Serverless in two clicks. The open-source endpoint scales to zero and returns Markdown, structured JSON, and images.";
+	"Deploy MinerU 4 on RunPod Serverless in two clicks. The open-source endpoint scales to zero and returns Markdown, structured JSON, and images.";
 
 export const metadata: Metadata = pageMetadata({
 	title: "Deploy MinerU on RunPod Serverless",
@@ -121,10 +121,10 @@ export default async function HomePage() {
 							>
 								MinerU
 							</a>{" "}
-							3.4.x with the <code>MinerU2.5-Pro-2605-1.2B</code> VLM by
+							4.0.x with the <code>MinerU2.5-Pro-2605-1.2B</code> VLM by
 							default. Send a PDF as a URL, base64 blob, or path on a mounted
-							volume. Get back Markdown, a structured <code>content_list</code>,
-							the raw <code>middle.json</code>, and extracted images. When
+							volume. Get back Markdown, <code>structured_content</code>,
+							the <code>middle_json</code>, and extracted images. When
 							traffic stops, RunPod tears the worker down in seconds.
 						</p>
 					</div>

@@ -69,7 +69,7 @@ The response wraps each parsed file in a `results: [...]` list — for a single-
 - **No retries or backoff.** Cold-start jobs can fail; the wrapper does not retry. Add your own retry logic with `tenacity` or similar if you need it.
 - **No streaming progress.** The handler emits `progress_update` events during a parse; the client ignores them.
 - **No typed response models.** Returns a raw `dict`. If you want a `ParsedDocument` Pydantic model, write your own adapter (see [the adapter example](https://github.com/sergeyshmakov/mineru-runpod/blob/main/examples/parser_adapter_example.py)).
-- **Not every raw field is wrapped.** Use the direct SDK or HTTP contract for fields such as hybrid `effort` or `archive_format`.
+- **Not every raw field is wrapped.** Use the direct SDK or HTTP contract for fields such as `archive_format`.
 
 This is a deliberate scope choice. The wrapper is a starter, not a production framework.
 
@@ -156,7 +156,7 @@ Either path returns the same handler response. Job-scoped metadata sits at the t
 {
   "ok": true,
   "elapsed_seconds": 18.4,
-  "mineru_version": "3.4.x",
+  "mineru_version": "4.0.12",
   "results": [
     {
       "basename": "doc",
@@ -175,14 +175,14 @@ Or with `transport: "inline"`:
 {
   "ok": true,
   "elapsed_seconds": 18.4,
-  "mineru_version": "3.4.x",
+  "mineru_version": "4.0.12",
   "results": [
     {
       "basename": "doc",
       "source": "url:https://...",
       "pages_requested": 100,
       "markdown": "# Heading\n\nBody text...",
-      "content_list": [{"type": "text", "page_idx": 0, "text": "..."}],
+      "structured_content": {"pages": [{"page_idx": 0, "blocks": [{"type": "text", "content": "..."}]}]},
       "middle": {"...": "..."},
       "images": {"img-1.png": "<base64>"}
     }
