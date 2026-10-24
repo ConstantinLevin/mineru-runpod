@@ -141,6 +141,16 @@ def test_a_file_without_a_download_record_is_a_failure_not_a_pass(verify, tmp_pa
     assert "OCR/det.pth" in problem
 
 
+def test_an_empty_download_record_is_no_record(verify, tmp_path) -> None:
+    """A record cut off before its first line names no commit. Beside a valid one it
+    would otherwise pass for a file whose revision nothing states."""
+    _download(tmp_path, REPO, "Layout/model.onnx", EXPECTED)
+    _download(tmp_path, REPO, "OCR/det.pth", EXPECTED)
+    (tmp_path / REPO / ".cache" / "huggingface" / "download" / "OCR" / "det.pth.metadata").write_bytes(b"")
+    problems = verify.check(tmp_path, {REPO: EXPECTED})
+    assert len(problems) == 1 and "OCR/det.pth" in problems[0], problems
+
+
 @pytest.mark.parametrize("marker_dir", ["", "Layout/PP-DocLayoutV2"])
 def test_minerus_completion_marker_is_not_a_file_that_lacks_a_record(verify, tmp_path, marker_dir) -> None:
     """After the download MinerU touches `.mineru_complete` in the repository root, or

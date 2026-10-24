@@ -38,14 +38,18 @@ _MINERU_MARKER = ".mineru_complete"
 
 
 def _unrecorded(repo_dir: Path) -> list[str]:
-    """Downloaded files that have no record of the commit they came from."""
+    """Downloaded files that have no record of the commit they came from.
+
+    An empty record is none: a write cut off before its first line names no commit.
+    """
     records = repo_dir / ".cache" / "huggingface" / "download"
     missing = []
     for file in sorted(repo_dir.rglob("*")):
         relative = file.relative_to(repo_dir)
         if not file.is_file() or relative.parts[0] == ".cache" or file.name == _MINERU_MARKER:
             continue
-        if not (records / f"{relative.as_posix()}.metadata").is_file():
+        record = records / f"{relative.as_posix()}.metadata"
+        if not record.is_file() or not record.read_bytes():
             missing.append(relative.as_posix())
     return missing
 
