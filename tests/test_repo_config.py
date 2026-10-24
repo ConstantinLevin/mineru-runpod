@@ -151,7 +151,7 @@ def test_minerus_completion_marker_is_not_a_file_that_lacks_a_record(verify, tmp
     assert verify.check(tmp_path, {REPO: EXPECTED}) == []
 
 
-def test_a_file_named_like_the_marker_does_not_excuse_an_unrecorded_one(verify, tmp_path) -> None:
+def test_the_marker_does_not_excuse_another_unrecorded_file(verify, tmp_path) -> None:
     _download(tmp_path, REPO, "Layout/model.onnx", EXPECTED)
     (tmp_path / REPO / ".mineru_complete").touch()
     (tmp_path / REPO / "OCR").mkdir()
@@ -159,6 +159,28 @@ def test_a_file_named_like_the_marker_does_not_excuse_an_unrecorded_one(verify, 
     (problem,) = verify.check(tmp_path, {REPO: EXPECTED})
     assert "OCR/det.pth" in problem
     assert ".mineru_complete" not in problem
+
+
+@pytest.mark.parametrize(
+    "unrecorded",
+    [
+        ".mineru_complete.bak",  # starts like the marker
+        "x.mineru_complete",     # ends like it
+        "mineru_complete",       # without the dot
+        ".hidden",               # any other dotfile
+        "Layout/PP-DocLayoutV2/extra.bin",  # beside a marker in a subdirectory
+    ],
+)
+def test_only_the_marker_itself_is_skipped(verify, tmp_path, unrecorded) -> None:
+    """The exemption is one file name. A rule any wider (every dotfile, every name that
+    contains it, everything in a directory that has one) would pass a file of unknown
+    origin, which is what the check is there to stop."""
+    _download(tmp_path, REPO, "Layout/PP-DocLayoutV2/model.onnx", EXPECTED)
+    (tmp_path / REPO / ".mineru_complete").touch()
+    (tmp_path / REPO / "Layout" / "PP-DocLayoutV2" / ".mineru_complete").touch()
+    (tmp_path / REPO / unrecorded).write_bytes(b"weights")
+    (problem,) = verify.check(tmp_path, {REPO: EXPECTED})
+    assert unrecorded in problem
 
 
 def test_a_missing_repository_directory_is_reported(verify, tmp_path) -> None:
