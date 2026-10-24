@@ -298,7 +298,7 @@ If you can't wire S3, the fallback is **page chunking**: split with `start_page`
 
 **Symptom**: the response has `ok: false` and an error such as `input is not a file type MinerU 4.0.12 reads (detected 'txt')`, or the job succeeds but `markdown` is not your document.
 
-**Cause**: the worker no longer checks magic numbers; MinerU decides from the bytes what the file is. A file it does not recognise or does not read fails the job and names the type it detected. A file it does read is read, even when it is not the file you meant.
+**Cause**: the worker no longer checks magic numbers; MinerU decides from the bytes what the file is. A file it does not recognise fails the job and names the type it detected; one it recognises but cannot read fails it with MinerU's own reason. A file it does read is read, even when it is not the file you meant.
 
 Most common reasons:
 
@@ -354,7 +354,7 @@ Typical lines on a successful job:
 On failure:
 
 ```json
-{"ts":"2026-05-25T18:30:42.789Z","level":"error","logger":"mineru-worker","message":"job failed","job_id":"queued-uuid-abc","error_type":"ValueError","error_message":"input is not a file type MinerU 4.0.12 reads (detected 'txt'). It reads PDF, images, Office, OpenDocument, RTF, EPUB, OFD, HTML and CSV/TSV files.","phase_ms":{"fetch_input":8}}
+{"ts":"2026-05-25T18:30:42.789Z","level":"error","logger":"mineru-worker","message":"job failed","job_id":"queued-uuid-abc","error_type":"ValueError","error_message":"input is not a file type MinerU 4.0.12 reads (detected 'txt'). It reads PDF, images, Office, OpenDocument, RTF, EPUB, OFD, HTML, MHTML and CSV/TSV files.","phase_ms":{"fetch_input":8}}
 ```
 
 On a job that succeeded but lost part of its output — a file MinerU wrote and

@@ -38,7 +38,7 @@ curl -X POST "https://api.runpod.ai/v2/<endpoint-id>/runsync" \
 
 The response wraps each parsed file as an entry inside `results: [...]`. For a single document, the markdown sits at `output.results[0].markdown` — pipe it straight to a file: `curl ... | jq -r '.output.results[0].markdown' > report.md`.
 
-Accepts every file type MinerU 4 reads: PDF and images, Office (DOC/DOCX/PPT/PPTX/XLS/XLSX), OpenDocument, RTF, EPUB, OFD, HTML and CSV/TSV. Two orthogonal knobs control output — **transport** (`tarball_b64` / `inline` / `s3`) and **formats** — both covered in [Output modes](https://mineru.shmakov.tools/guides/output-modes/).
+Accepts every file type MinerU 4 reads: PDF and images, Office (DOC/DOCX/PPT/PPTX/XLS/XLSX), OpenDocument, RTF, EPUB, OFD, HTML/MHTML and CSV/TSV. Two orthogonal knobs control output — **transport** (`tarball_b64` / `inline` / `s3`) and **formats** — both covered in [Output modes](https://mineru.shmakov.tools/guides/output-modes/).
 
 ## Why this exists
 

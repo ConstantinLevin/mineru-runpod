@@ -100,10 +100,10 @@ pre-stage on a network volume and use `volume_path` — see
 
 ## Page selection (PDF only)
 
-`start_page` / `end_page` apply to PDFs. The worker hands the window to MinerU as its 1-based `page_range`; for any other file type MinerU 4 rejects a page range and the job fails. A job without a window, the whole document, sends none.
+`start_page` / `end_page` apply to PDFs. The worker hands the window to MinerU as its 1-based `page_range`; for any other file type, an image included, MinerU 4 rejects a page range, so the worker sends none and reads the file whole: a window on a DOCX or an HTML page is ignored rather than failing the job. A job without a window, the whole document, sends none either.
 
 ## When the type is not what you meant
 
-The worker no longer checks magic numbers itself: MinerU decides. A file MinerU does not recognise or does not read fails the job with the type it detected.
+The worker no longer checks magic numbers itself: MinerU decides. A file MinerU does not recognise fails the job with the type it detected (or says it found none); one it recognises but cannot read fails the job with MinerU's own reason. The response's `error` carries either.
 
 One consequence deserves attention, because MinerU 4 reads HTML: a `file_url` that returns an **HTML error page** (a 403 from an object store with expired credentials, say) is no longer rejected as "unknown bytes". It should be parsed as an HTML document, and the job should succeed with the error page's text (not yet confirmed on a recorded HTML file). If `file_url` can fail that way, look at what came back (the first lines of `markdown` show it) before trusting the job.
