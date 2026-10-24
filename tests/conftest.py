@@ -163,6 +163,17 @@ def seed_mineru_output():
 
 
 @pytest.fixture
+def recorded_metrics(monkeypatch):
+    """Every counter and histogram sample the worker records, as `(name, labels)`."""
+    from worker import telemetry  # noqa: PLC0415
+
+    recorded: list[tuple[str, dict]] = []
+    monkeypatch.setattr(telemetry, "counter_add", lambda name, value=1, **attrs: recorded.append((name, attrs)))
+    monkeypatch.setattr(telemetry, "histogram_record", lambda name, value, **attrs: recorded.append((name, attrs)))
+    return recorded
+
+
+@pytest.fixture
 def run_job():
     """Run one job through the handler, with `data` as its `file_b64` source."""
     import handler  # noqa: PLC0415
