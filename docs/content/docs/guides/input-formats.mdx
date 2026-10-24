@@ -106,4 +106,4 @@ pre-stage on a network volume and use `volume_path` — see
 
 The worker no longer checks magic numbers itself: MinerU decides. A file MinerU does not recognise or does not read fails the job with the type it detected.
 
-One consequence deserves attention, because MinerU 4 reads HTML: a `file_url` that returns an **HTML error page** (a 403 from an object store with expired credentials, say) is no longer rejected as "unknown bytes". It should be parsed as an HTML document, and the job succeed with the error page's text (not yet confirmed on a recorded HTML file). If `file_url` can fail that way, look at what came back (the first lines of `markdown` show it) before trusting the job.
+One consequence deserves attention, because MinerU 4 reads HTML: a `file_url` that returns an **HTML error page** (a 403 from an object store with expired credentials, say) is no longer rejected as "unknown bytes". It should be parsed as an HTML document, and the job should succeed with the error page's text (not yet confirmed on a recorded HTML file). If `file_url` can fail that way, look at what came back (the first lines of `markdown` show it) before trusting the job.
