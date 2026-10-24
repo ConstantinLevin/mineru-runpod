@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -120,10 +121,15 @@ async def run_mineru(
     # saved, so its image links resolve to the files beside it. This file is the
     # worker's, not MinerU's, and MinerU's files are already on disk: if the render
     # fails, the parse is not lost, and the response says the file is missing.
+    # Written beside the output directory and moved in once complete, so a write that
+    # fails midway leaves nothing in the directory that is packaged; the stray file
+    # goes with the job's temporary directory.
+    staged = work_dir / "markdown_full.md.partial"
     try:
         saved = ParseResult.from_json((output_dir / "middle_json.json").read_text(encoding="utf-8"))
         full = saved.markdown(mode=RenderMode.FULL)
-        (output_dir / "markdown_full.md").write_text(full, encoding="utf-8")
+        staged.write_text(full, encoding="utf-8")
+        os.replace(staged, output_dir / "markdown_full.md")
     except Exception as exc:  # noqa: BLE001 - whatever MinerU's renderer raises
         # The renderer's exception can quote the document and URLs inside it: log it
         # through the same reduction as a failed job's error.
@@ -132,13 +138,6 @@ async def run_mineru(
             error_type=type(exc).__name__,
             error_message=_redact.compact(str(exc)),
         )
-        # A write that failed midway must not leave a file that reads as the document.
-        # Best effort: if the removal fails too, the loss noted below still tells the
-        # caller not to trust that file, and this function still returns the parse.
-        try:
-            (output_dir / "markdown_full.md").unlink(missing_ok=True)
-        except OSError as unlink_exc:
-            _logging.warning("half-written full-mode markdown could not be removed", error=repr(unlink_exc))
         (lost if lost is not None else _degraded.Report()).note(
             reason=_degraded.UNREADABLE,
             file="markdown_full.md",

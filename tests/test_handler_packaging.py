@@ -227,45 +227,43 @@ def test_a_full_mode_render_that_fails_costs_that_file_not_the_parse(fake_mineru
     )
 
 
-def test_a_full_mode_file_that_fails_midway_is_not_left_behind(fake_mineru, monkeypatch, run_job):
-    """A half-written markdown_full.md would ship and read as the document."""
-    real_write = Path.write_text
-
-    def failing_write(self, data, *args, **kwargs):
-        if self.name == "markdown_full.md":
-            real_write(self, "# h", *args, **kwargs)
-            raise OSError("no space left on device")
-        return real_write(self, data, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "write_text", failing_write)
-    entry = run_job(transport="inline")["results"][0]
-    assert entry["markdown_full"] == ""  # nothing of it ships
-    assert entry["degraded"]["count"] == 1
-
-
-def test_a_cleanup_that_cannot_run_does_not_turn_the_loss_into_a_failed_job(fake_mineru, monkeypatch, run_job):
-    """The write of markdown_full fails midway and leaves a partial file; removing it
-    is best effort. If the removal itself raises, the parse MinerU already paid for
-    must still be returned, with the loss reported."""
+@pytest.mark.parametrize("transport", ["inline", "tarball_b64"])
+@pytest.mark.parametrize("removal_works", [True, False])
+def test_a_full_mode_file_that_fails_midway_does_not_ship(
+    fake_mineru, monkeypatch, run_job, transport, removal_works
+):
+    """A half-written markdown_full.md would read as the document. Whether anything
+    can be removed afterwards must not decide that, and neither the parse nor the
+    other files may be lost with it."""
     real_write, real_unlink = Path.write_text, Path.unlink
 
     def failing_write(self, data, *args, **kwargs):
-        if self.name == "markdown_full.md":
+        if self.name.startswith("markdown_full"):
             real_write(self, "# h", *args, **kwargs)
             raise OSError("no space left on device")
         return real_write(self, data, *args, **kwargs)
 
     def refusing_unlink(self, *args, **kwargs):
-        if self.name == "markdown_full.md":
+        if self.name.startswith("markdown_full"):
             raise PermissionError("operation not permitted")
         return real_unlink(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "write_text", failing_write)
-    monkeypatch.setattr(Path, "unlink", refusing_unlink)
-    result = run_job(transport="inline")
+    if not removal_works:
+        monkeypatch.setattr(Path, "unlink", refusing_unlink)
+    result = run_job(transport=transport)
+
     assert result["ok"] is True
     entry = result["results"][0]
-    assert entry["markdown"] == "# body\n"
+    if transport == "inline":
+        assert entry["markdown"] == "# body\n"
+        assert entry["markdown_full"] == ""  # nothing of it ships
+    else:
+        raw = base64.b64decode(entry["tarball_b64"])
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
+            names = set(tar.getnames())
+        assert "markdown.md" in names
+        assert not any(name.startswith("markdown_full") for name in names)
     assert entry["degraded"]["count"] == 1
     assert entry["degraded"]["items"][0]["error_type"] == "OSError"
 
