@@ -42,6 +42,7 @@ from worker.envelope import (
     _PROBE_NOT_DISABLED,  # noqa: F401 - re-exported below
     _build_debug,
     _maybe_progress,
+    merge_degraded,
     _measure_output_bytes,
     _probe_allowed,
 )
@@ -86,6 +87,7 @@ async def _handle_probe(started: float, gpu_info: dict[str, Any], phase_ms: dict
         "elapsed_seconds": round(time.monotonic() - started, 2),
         "mineru_version": _parse.MINERU_VERSION,
         "mineru_available": _parse.MINERU_AVAILABLE,
+        "mineru_import_error": _parse.MINERU_IMPORT_ERROR,
         "probe": _debug.probe_filesystem(),
         "debug": _build_debug(phase_ms, gpu_info),
     }
@@ -133,9 +135,7 @@ async def _handle_parse(
     )
     _telemetry.histogram_record("input_size_bytes", float(len(file_bytes)))
 
-    # Only a label for telemetry. Whether MinerU reads the file is MinerU's call:
-    # the coarse check here knows PDF, images and ZIP containers, and nothing of
-    # an HTML, RTF or legacy Office file that MinerU 4 reads perfectly well.
+    # A telemetry label only: whether MinerU reads the file is MinerU's call.
     input_format = _io.detect_format(file_bytes)
 
     _note_shutdown("parse")
@@ -150,6 +150,7 @@ async def _handle_parse(
     with tempfile.TemporaryDirectory(prefix="mineru-job-") as tmp:
         work_dir = Path(tmp)
         t = time.monotonic()
+        parse_lost = _degraded.Report()
         with _telemetry.span(
             "mineru.parse",
             phase="parse",
@@ -169,6 +170,7 @@ async def _handle_parse(
                 tier=tier,
                 ocr_mode=cleaned["ocr_mode"],
                 image_analysis=cleaned["image_analysis"],
+                lost=parse_lost,
             )
         parse_seconds = time.monotonic() - t
         phase_ms["mineru_parse"] = int(parse_seconds * 1000)
@@ -209,17 +211,15 @@ async def _handle_parse(
                 archive_format=cleaned["archive_format"],
                 report=lost,
             )
+        merge_degraded(entry, parse_lost)
         _record_degradation(lost)
+        _record_degradation(parse_lost)
         response: dict[str, Any] = {
             "ok": True,
             "elapsed_seconds": round(time.monotonic() - started, 2),
             "mineru_version": _parse.MINERU_VERSION,
-            # How the document was read, as MinerU noted it in the result: the
-            # tier and OCR mode it used (never "auto"), and image analysis only
-            # where it acted. These are not the job's request echoed back.
-            **_parse.reported_settings(
-                output_dir, image_analysis=cleaned["image_analysis"]
-            ),
+            # How it was read, as MinerU noted it (not the request echoed back).
+            **_parse.reported_settings(output_dir, image_analysis=cleaned["image_analysis"]),
             "results": [entry],
         }
         package_seconds = time.monotonic() - t

@@ -16,6 +16,8 @@ still reported as one. What the message says is the harness's own test.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from mineru_client import MineruClient, MineruClientError
@@ -61,8 +63,6 @@ def test_the_message_names_this_engine_s_bulky_artifact(
     _drop_the_response(client, monkeypatch)
     with pytest.raises(MineruClientError) as caught:
         client.parse_document(file_url="https://example.com/scan.pdf")
-    import re
-
     assert re.search(r"middle_json(?!\.)", str(caught.value))
 
 

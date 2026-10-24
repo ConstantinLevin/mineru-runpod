@@ -44,7 +44,7 @@ REMOVED_FIELDS: dict[str, str] = {
         "MinerU 4 has no backends. Use `tier` (flash, basic, standard or "
         "advanced) for how deeply it reads and `ocr_mode` (auto, txt or ocr) "
         "for where the text comes from; the old vlm and hybrid backends "
-        "correspond to tier=advanced"
+        "correspond to tier=advanced and the old pipeline backend to tier=basic"
     ),
     "effort": (
         "Use `tier` and `image_analysis`: the old effort=high is "

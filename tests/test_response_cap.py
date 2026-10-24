@@ -21,6 +21,8 @@ this file's.
 
 from __future__ import annotations
 
+import re
+
 import asyncio
 import json
 
@@ -106,7 +108,6 @@ def test_the_refusal_says_how_to_get_the_output_anyway(oversized_result):
     """An error that only says "too large" leaves the caller guessing, so each
     of the three ways out is part of the contract."""
     error = oversized_result["error"]
-    import re
     # names the `formats` key a caller would leave out, not a file name
     assert re.search(r"leaves out middle_json(?!\.)", error)
     assert 'transport="s3"' in error       # a presigned URL instead of bytes

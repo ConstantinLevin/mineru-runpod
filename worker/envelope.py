@@ -17,6 +17,7 @@ from runpod.serverless.modules import rp_http
 
 from pathlib import Path
 
+from runpod_doc_worker.contract import degraded as _degraded
 from runpod_doc_worker.obs import debug as _debug
 from runpod_doc_worker.obs import logging as _logging
 from runpod_doc_worker.transport import package as _package
@@ -144,10 +145,10 @@ def _measure_output_bytes(response: dict[str, Any], transport: str) -> int:
 
     Per-transport sizing:
       * tarball_b64 — the b64 string IS the payload; len() is exact.
-      * inline      — markdown text + image bytes dominate the JSON-encoded
-                      response; sum those (json overhead for content_list/
-                      middle is ignored). Cheap and within ~10% of the true
-                      response size on real documents.
+      * inline      — the two markdown texts + image bytes dominate the
+                      JSON-encoded response; sum those (the JSON files are
+                      ignored). Cheap, and an estimate: it under-reports a
+                      response whose middle JSON or model output is large.
       * s3          — package_s3 records the uploaded tarball size in
                       `bucket_bytes`; the worker shipped exactly that.
     Returns 0 when the response shape doesn't include the expected fields
@@ -164,14 +165,32 @@ def _measure_output_bytes(response: dict[str, Any], transport: str) -> int:
     if transport == "s3":
         return int(entry.get("bucket_bytes") or 0)
     if transport == "inline":
-        md = entry.get("markdown") or ""
+        texts = (entry.get("markdown") or "", entry.get("markdown_full") or "")
         images = entry.get("images") or {}
-        md_bytes = len(md.encode("utf-8")) if isinstance(md, str) else 0
+        md_bytes = sum(len(t.encode("utf-8")) for t in texts if isinstance(t, str))
         image_bytes = sum(
             len(v) for v in images.values() if isinstance(v, str)
         ) if isinstance(images, dict) else 0
         return md_bytes + image_bytes
     return 0
+
+
+def merge_degraded(entry: dict[str, Any], extra: _degraded.Report) -> None:
+    """Add what the parse lost to the ``degraded`` object packaging already built.
+
+    A caller reads one object. The harness fills it from packaging; the parse can
+    lose something of its own, and it is merged here rather than reported twice.
+    """
+    more = extra.entry()
+    if more is None:
+        return
+    current = entry.get(_degraded.ENTRY_KEY)
+    if current is None:
+        entry[_degraded.ENTRY_KEY] = more
+        return
+    current["count"] += more["count"]
+    room = _degraded.MAX_ITEMS - len(current["items"])
+    current["items"].extend(more["items"][: max(room, 0)])
 
 
 def _package_inline(

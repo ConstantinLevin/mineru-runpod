@@ -154,7 +154,6 @@ def test_inline_entry_with_markdown_only_omits_other_keys(tmp_path):
     assert "markdown" in entry
     for other in ("markdown_full", "middle_json", "structured_content", "model_output", "images"):
         assert other not in entry
-    assert "markdown" in entry
 
 
 def test_inline_entry_with_two_formats(tmp_path):
@@ -359,3 +358,41 @@ def test_bytes_the_coarse_check_does_not_know_are_left_to_mineru(monkeypatch):
     result = asyncio.run(handler.handler({"input": {"file_b64": html}}))
     assert result["ok"] is True
     assert seen["tier"] == "advanced"
+
+
+def test_a_loss_the_parse_reports_is_merged_into_the_entry(monkeypatch):
+    """The harness lists what packaging lost; the parse can lose something of its
+    own, and a caller reads one `degraded` object, not two."""
+
+    async def fake_run(file_bytes, *, work_dir, lost=None, **kwargs):  # noqa: ARG001
+        out = work_dir / "fake-out"
+        out.mkdir()
+        (out / "markdown.md").write_text("# fake\n", encoding="utf-8")
+        (out / "structured_content.json").write_bytes(b"{truncated")
+        lost.note(
+            reason="unreadable", file="markdown_full.md",
+            artifact="markdown_full", error_type="RuntimeError",
+        )
+        return out
+
+    monkeypatch.setattr("worker.parse.run_mineru", fake_run)
+    result = asyncio.run(handler.handler({
+        "input": {"file_b64": "JVBERi0xLjQK", "transport": "inline"}
+    }))
+    assert result["ok"] is True
+    degraded = result["results"][0]["degraded"]
+    assert degraded["count"] == 2
+    assert {item["artifact"] for item in degraded["items"]} == {"structured_content", "markdown_full"}
+
+
+def test_a_loss_only_the_parse_reports_still_marks_the_entry(monkeypatch):
+    async def fake_run(file_bytes, *, work_dir, lost=None, **kwargs):  # noqa: ARG001
+        out = work_dir / "fake-out"
+        out.mkdir()
+        (out / "markdown.md").write_text("# fake\n", encoding="utf-8")
+        lost.note(reason="unreadable", file="markdown_full.md", artifact="markdown_full")
+        return out
+
+    monkeypatch.setattr("worker.parse.run_mineru", fake_run)
+    result = asyncio.run(handler.handler({"input": {"file_b64": "JVBERi0xLjQK"}}))
+    assert result["results"][0]["degraded"]["count"] == 1

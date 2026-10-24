@@ -318,3 +318,11 @@ def test_an_empty_reading_setting_is_rejected_not_defaulted(field):
     mistake that would otherwise be read with a setting they never named."""
     with pytest.raises(ValueError, match=f"{field} must be one of"):
         handler._validate_input({"file_b64": "AA==", field: ""})
+
+
+def test_the_backend_message_says_where_each_old_backend_went():
+    with pytest.raises(ValueError) as caught:
+        handler._validate_input({"file_b64": "AA==", "backend": "pipeline"})
+    message = str(caught.value)
+    assert "pipeline" in message and "tier=basic" in message
+    assert "tier=advanced" in message

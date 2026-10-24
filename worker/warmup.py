@@ -88,8 +88,10 @@ async def warmup_async() -> None:
 
     # The defaults are the job defaults (worker.schema), so a worker that is
     # never told otherwise warms the path its first job will take.
-    tier = os.environ.get("MINERU_WARMUP_TIER", "advanced")
-    ocr_mode = os.environ.get("MINERU_WARMUP_OCR_MODE", "ocr")
+    from worker import schema as _schema  # noqa: PLC0415
+
+    tier = os.environ.get("MINERU_WARMUP_TIER", _schema.INPUT_SCHEMA["tier"]["default"])
+    ocr_mode = os.environ.get("MINERU_WARMUP_OCR_MODE", _schema.INPUT_SCHEMA["ocr_mode"]["default"])
     _log(f"starting (tier={tier} ocr_mode={ocr_mode} fixture={WARMUP_FIXTURE_PATH})")
     start = time.monotonic()
 

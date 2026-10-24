@@ -353,3 +353,24 @@ def test_an_archive_member_is_counted_under_its_own_label(monkeypatch, capsys):
 
     handler._record_degradation(report)
     assert calls == [(1, {"reason": "unsafe_name", "artifact": "archive"})]
+
+
+def test_a_loss_the_parse_reports_is_counted_too(monkeypatch, capsys):
+    """Not only what packaging lost: the full-mode render is the worker's own file,
+    and a fleet watching the rate needs it counted like the rest."""
+    calls = _degradation_counts(monkeypatch)
+
+    async def fake_run(file_bytes, *, work_dir, lost, **kwargs):
+        out = work_dir / "out"
+        out.mkdir()
+        (out / "markdown.md").write_text("# fine\n", encoding="utf-8")
+        lost.note(reason="unreadable", file="markdown_full.md", artifact="markdown_full")
+        return out
+
+    monkeypatch.setattr("worker.parse.run_mineru", fake_run)
+    asyncio.run(handler.handler({
+        "input": {"file_b64": "JVBERi0xLjQK", "transport": "inline", "formats": ["markdown"]},
+    }))
+    capsys.readouterr()
+
+    assert calls == [(1, {"reason": "unreadable", "artifact": "markdown_full"})]

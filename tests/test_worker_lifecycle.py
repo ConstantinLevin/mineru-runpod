@@ -184,15 +184,16 @@ def test_measure_output_bytes_tarball():
 
 
 def test_measure_output_bytes_inline_sums_markdown_and_images():
-    """Inline: dominate fields are markdown text + b64 image strings."""
+    """Inline: dominant fields are the two markdown texts + b64 image strings."""
     response = {"results": [{
         "markdown": "# hello\n",  # 8 utf-8 bytes
+        "markdown_full": "# hello\n\n1\n",  # 11 utf-8 bytes
         "images": {"page1.png": "A" * 200, "page2.png": "B" * 300},
-        # content_list / middle are ignored — JSON overhead is negligible
-        # compared to the image and markdown payload on real documents.
-        "content_list": [{"foo": "bar"}],
+        # The JSON files are ignored — their overhead is an estimate's error, not
+        # worth re-serializing a whole response to measure.
+        "structured_content": {"pages": [{"page_idx": 0, "blocks": []}]},
     }]}
-    assert handler._measure_output_bytes(response, "inline") == 8 + 500
+    assert handler._measure_output_bytes(response, "inline") == 8 + 11 + 500
 
 
 def test_measure_output_bytes_s3_uses_bucket_bytes():

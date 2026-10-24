@@ -19,6 +19,7 @@ import types
 from pathlib import Path
 
 import pytest
+from runpod_doc_worker.contract import degraded
 
 from worker import parse
 
@@ -208,3 +209,45 @@ def test_the_version_is_unknown_only_when_the_package_has_none(monkeypatch):
 
     monkeypatch.setattr(parse.metadata, "version", missing)
     assert parse.installed_version() == "unknown"
+
+
+def test_a_full_mode_render_that_fails_costs_that_file_not_the_parse(mineru, tmp_path, monkeypatch):
+    """`markdown_full` is built by the worker, after MinerU has saved the result it
+    was paid for. If rendering it fails, the saved files still ship, and the loss
+    is reported rather than dropped."""
+    def broken(self, *, mode=None, **_unused):
+        if mode is not None and mode.value == "full":
+            raise RuntimeError("cannot render this document in full mode")
+        return "default"
+
+    monkeypatch.setattr(_FakeParseResult, "markdown", broken)
+    lost = degraded.Report()
+    out = _run(PDF, tmp_path, lost=lost)
+
+    assert (out / "markdown.md").read_text() == "# body\n"
+    assert not (out / "markdown_full.md").exists()
+    entry = lost.entry()
+    assert entry["count"] == 1
+    (item,) = entry["items"]
+    assert (item["artifact"], item["file"], item["reason"], item["error_type"]) == (
+        "markdown_full", "markdown_full.md", "unreadable", "RuntimeError",
+    )
+
+
+def test_the_version_survives_a_parser_that_cannot_be_imported(monkeypatch):
+    """The version is the installed distribution's, whether or not the parser then
+    imports. A broken dependency used to replace it with an error string in every
+    response, which hides the one fact that says what was deployed."""
+    monkeypatch.setattr(parse.metadata, "version", lambda name: "4.0.12")
+    monkeypatch.setitem(sys.modules, "mineru.parser", None)  # makes the import raise
+    available, version, import_error = parse.probe_mineru()
+    assert available is False
+    assert version == "4.0.12"
+    assert "mineru.parser" in import_error
+
+
+def test_a_parse_without_an_importable_mineru_says_why(monkeypatch, tmp_path):
+    monkeypatch.setattr(parse, "MINERU_AVAILABLE", False)
+    monkeypatch.setattr(parse, "MINERU_IMPORT_ERROR", "ModuleNotFoundError: no module named docvortex")
+    with pytest.raises(RuntimeError, match="docvortex"):
+        _run(PDF, tmp_path)

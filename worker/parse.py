@@ -7,6 +7,9 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
+from runpod_doc_worker.contract import degraded as _degraded
+from runpod_doc_worker.obs import logging as _logging
+
 # MinerU's heavy imports run lazily inside run_mineru so the handler module
 # itself imports on a CPU-only test machine (CI exercises input validation
 # and packaging without needing a GPU). Module-level only does a soft probe
@@ -26,14 +29,23 @@ def installed_version() -> str:
         return "unknown"
 
 
-try:
-    from mineru.parser import parse_async  # noqa: F401  (smoke import)
-    MINERU_VERSION = installed_version()
-    MINERU_AVAILABLE = True
-except Exception as e:  # pragma: no cover — handler returns the error to caller
-    parse_async = None  # type: ignore[assignment]
-    MINERU_VERSION = f"import-failed: {e}"
-    MINERU_AVAILABLE = False
+def probe_mineru() -> tuple[bool, str, str | None]:
+    """Whether MinerU's parser imports, which version is installed, and why not.
+
+    The version is the installed distribution's whether or not the import works:
+    a broken dependency must not replace it in every response, since it is the one
+    fact that says what was deployed. The import error is kept apart for the
+    message of the job that cannot run and for the probe.
+    """
+    version = installed_version()
+    try:
+        from mineru.parser import parse_async as _smoke  # noqa: F401, PLC0415
+    except Exception as exc:  # noqa: BLE001 - any failure to import is the answer
+        return False, version, f"{type(exc).__name__}: {exc}"
+    return True, version, None
+
+
+MINERU_AVAILABLE, MINERU_VERSION, MINERU_IMPORT_ERROR = probe_mineru()
 
 
 def _page_range(start_page: int, end_page: int | None) -> str:
@@ -57,10 +69,15 @@ async def run_mineru(
     tier: str,
     ocr_mode: str,
     image_analysis: bool,
+    lost: _degraded.Report | None = None,
 ) -> Path:
-    """Read one document with MinerU 4 and return the directory it saved into."""
+    """Read one document with MinerU 4 and return the directory it saved into.
+
+    What the worker adds to MinerU's own files and cannot produce is noted in
+    ``lost`` instead of failing a parse that has already been paid for.
+    """
     if not MINERU_AVAILABLE:
-        raise RuntimeError(f"mineru is not importable: {MINERU_VERSION}")
+        raise RuntimeError(f"mineru is not importable: {MINERU_IMPORT_ERROR}")
     # Late re-import keeps the static import wrapped; the binding is the real one here.
     from mineru import filetypes  # type: ignore[import-not-found]  # noqa: PLC0415
     from mineru.parser import parse_async as _parse_async  # type: ignore[import-not-found]  # noqa: PLC0415
@@ -99,11 +116,21 @@ async def run_mineru(
 
     # The default markdown leaves out headers, footers, page numbers, margin text
     # and page footnotes; the full mode keeps them. Rendered from what was just
-    # saved, so its image links resolve to the files beside it.
-    saved = ParseResult.from_json((output_dir / "middle_json.json").read_text(encoding="utf-8"))
-    (output_dir / "markdown_full.md").write_text(
-        saved.markdown(mode=RenderMode.FULL), encoding="utf-8"
-    )
+    # saved, so its image links resolve to the files beside it. This file is the
+    # worker's, not MinerU's, and MinerU's files are already on disk: if the render
+    # fails, the parse is not lost, and the response says the file is missing.
+    try:
+        saved = ParseResult.from_json((output_dir / "middle_json.json").read_text(encoding="utf-8"))
+        full = saved.markdown(mode=RenderMode.FULL)
+        (output_dir / "markdown_full.md").write_text(full, encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001 - whatever MinerU's renderer raises
+        _logging.warning("full-mode markdown could not be rendered", error=repr(exc))
+        (lost if lost is not None else _degraded.Report()).note(
+            reason=_degraded.UNREADABLE,
+            file="markdown_full.md",
+            artifact="markdown_full",
+            error_type=type(exc).__name__,
+        )
     return output_dir
 
 
