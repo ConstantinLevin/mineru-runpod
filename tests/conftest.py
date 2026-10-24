@@ -67,6 +67,11 @@ class _InvalidRequestError(Exception):
         self.code, self.message, self.param = code, message, param
 
 
+# The worker reports a failure as "<type name>: <message>": under MinerU's own name,
+# so the error type the API reference promises can be asserted.
+_InvalidRequestError.__name__ = _InvalidRequestError.__qualname__ = "InvalidRequestError"
+
+
 class _Writer:
     def __init__(self, parent_dir: str = "") -> None:
         self.parent = Path(parent_dir)

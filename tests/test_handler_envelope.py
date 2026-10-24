@@ -373,6 +373,7 @@ def test_a_window_that_selects_no_page_is_refused_in_the_jobs_own_terms(fake_min
     )
     result = run_job(**job_pages)
     assert result["ok"] is False
+    assert result["error"].startswith("ValueError: "), "the refusal is the worker's own, as the API reference says"
     assert named in result["error"]
     assert "reversed ranges are not supported" in result["error"], "MinerU's own reason is kept"
 
@@ -385,6 +386,7 @@ def test_a_page_refusal_without_a_window_is_reported_as_mineru_gave_it(fake_mine
     )
     result = run_job()
     assert result["ok"] is False
+    assert result["error"].startswith("InvalidRequestError: "), "MinerU's own error keeps its type"
     assert "document has no available pages" in result["error"]
     assert "start_page" not in result["error"]
 
