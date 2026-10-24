@@ -124,6 +124,30 @@ def fake_mineru(monkeypatch):
 
 
 @pytest.fixture
+def seed_mineru_output():
+    """Write what a finished parse leaves in its output directory.
+
+    The files MinerU 4's `ParseResult.save` writes, plus the worker's full-mode
+    markdown. `model_output=False` leaves out the raw model output, which MinerU
+    writes only when it has some.
+    """
+
+    def seed(dir_: Path, *, model_output: bool = True) -> None:
+        (dir_ / "markdown.md").write_text("# heading\n\nbody\n", encoding="utf-8")
+        (dir_ / "markdown_full.md").write_text("# heading\n\nbody\n\n1\n", encoding="utf-8")
+        (dir_ / "middle_json.json").write_text(json.dumps({"k": 1}), encoding="utf-8")
+        (dir_ / "structured_content.json").write_text(
+            json.dumps({"blocks": [{"type": "text", "text": "body"}]}), encoding="utf-8"
+        )
+        if model_output:
+            (dir_ / "model_output.json").write_text(json.dumps({"raw": True}), encoding="utf-8")
+        (dir_ / "images").mkdir()
+        (dir_ / "images" / "fig1.png").write_bytes(b"\x89PNG fake")
+
+    return seed
+
+
+@pytest.fixture
 def run_job():
     """Run one job through the handler, with `data` as its `file_b64` source."""
     import handler  # noqa: PLC0415

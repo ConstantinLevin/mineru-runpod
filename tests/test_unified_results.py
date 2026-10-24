@@ -14,7 +14,6 @@ import io
 import json
 import tarfile
 import zipfile
-from pathlib import Path
 
 import pytest
 
@@ -25,34 +24,13 @@ from worker.harness import MANIFEST
 
 
 # -----------------------------------------------------------------------------
-# Fixture
-# -----------------------------------------------------------------------------
-
-def _seed_mineru_output(dir_: Path, basename: str | None = None) -> None:
-    """The files MinerU 4's `ParseResult.save` writes, plus the full-mode markdown.
-
-    `basename` is accepted and unused: MinerU 4 names its files itself, so the
-    caller's basename no longer reaches the output directory.
-    """
-    (dir_ / "markdown.md").write_text("# heading\n\nbody\n", encoding="utf-8")
-    (dir_ / "markdown_full.md").write_text("# heading\n\nbody\n\n1\n", encoding="utf-8")
-    (dir_ / "middle_json.json").write_text(json.dumps({"k": 1}), encoding="utf-8")
-    (dir_ / "structured_content.json").write_text(
-        json.dumps({"blocks": [{"type": "text", "text": "body"}]}), encoding="utf-8"
-    )
-    (dir_ / "model_output.json").write_text(json.dumps({"raw": True}), encoding="utf-8")
-    (dir_ / "images").mkdir()
-    (dir_ / "images" / "fig1.png").write_bytes(b"\x89PNG fake")
-
-
-# -----------------------------------------------------------------------------
 # package_results_entry — per-transport assembly
 # -----------------------------------------------------------------------------
 
-def test_tarball_entry_carries_basename_source_pages_and_tarball(tmp_path):
+def test_tarball_entry_carries_basename_source_pages_and_tarball(tmp_path, seed_mineru_output):
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out)
     entry = package.package_results_entry(
         transport="tarball_b64",
         formats=["markdown"],  # no-op for tarball
@@ -83,11 +61,11 @@ def test_tarball_entry_carries_basename_source_pages_and_tarball(tmp_path):
     assert "structured_content" not in entry
 
 
-def test_tarball_entry_zip_archive_format(tmp_path):
+def test_tarball_entry_zip_archive_format(tmp_path, seed_mineru_output):
     """archive_format='zip' produces a base64 .zip (still under tarball_b64)."""
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out)
     entry = package.package_results_entry(
         transport="tarball_b64",
         formats=["markdown"],
@@ -107,10 +85,10 @@ def test_tarball_entry_zip_archive_format(tmp_path):
     assert "images/fig1.png" in names
 
 
-def test_inline_entry_with_all_formats(tmp_path):
+def test_inline_entry_with_all_formats(tmp_path, seed_mineru_output):
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out)
     entry = package.package_results_entry(
         transport="inline",
         formats=[
@@ -135,13 +113,13 @@ def test_inline_entry_with_all_formats(tmp_path):
     assert "tarball_url" not in entry
 
 
-def test_inline_entry_with_markdown_only_omits_other_keys(tmp_path):
+def test_inline_entry_with_markdown_only_omits_other_keys(tmp_path, seed_mineru_output):
     """formats=['markdown'] produces ONLY the markdown key in the entry —
     all the others are absent, not present-as-empty.
     """
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out)
     entry = package.package_results_entry(
         transport="inline",
         formats=["markdown"],
@@ -156,10 +134,10 @@ def test_inline_entry_with_markdown_only_omits_other_keys(tmp_path):
         assert other not in entry
 
 
-def test_inline_entry_with_two_formats(tmp_path):
+def test_inline_entry_with_two_formats(tmp_path, seed_mineru_output):
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out)
     entry = package.package_results_entry(
         transport="inline",
         formats=["structured_content", "images"],

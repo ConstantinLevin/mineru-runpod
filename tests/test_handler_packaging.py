@@ -15,22 +15,10 @@ import handler
 from worker import envelope
 
 
-def _seed_mineru_output(dir_: Path, basename: str) -> None:
-    """MinerU 4's saved files; `basename` is unused, MinerU names its own."""
-    (dir_ / "markdown.md").write_text("# heading\n\nbody\n", encoding="utf-8")
-    (dir_ / "markdown_full.md").write_text("# heading\n\nbody\n\n1\n", encoding="utf-8")
-    (dir_ / "structured_content.json").write_text(
-        json.dumps({"blocks": [{"type": "text", "text": "body"}]}), encoding="utf-8"
-    )
-    (dir_ / "middle_json.json").write_text(json.dumps({"k": 1}), encoding="utf-8")
-    (dir_ / "images").mkdir()
-    (dir_ / "images" / "fig1.png").write_bytes(b"\x89PNG fake")
-
-
-def test_package_tarball_includes_all_artefacts(tmp_path):
+def test_package_tarball_includes_all_artefacts(tmp_path, seed_mineru_output):
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out, model_output=False)
 
     encoded = handler._package_tarball(out)
     raw = base64.b64decode(encoded)
@@ -40,10 +28,10 @@ def test_package_tarball_includes_all_artefacts(tmp_path):
     assert "images/fig1.png" in names or "images" in names
 
 
-def test_package_inline_returns_full_payload(tmp_path):
+def test_package_inline_returns_full_payload(tmp_path, seed_mineru_output):
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out, model_output=False)
 
     pkg = envelope._package_inline(out, "doc")
     assert pkg["markdown"].startswith("# heading")
@@ -80,7 +68,7 @@ def test_validate_input_accepts_s3_transport():
     assert cleaned["transport"] == "s3"
 
 
-def test_package_s3_requires_bucket_env_vars(tmp_path, monkeypatch):
+def test_package_s3_requires_bucket_env_vars(tmp_path, seed_mineru_output, monkeypatch):
     # Strip any leaked credentials from the test process.
     for var in (
         "BUCKET_ENDPOINT_URL",
@@ -91,12 +79,12 @@ def test_package_s3_requires_bucket_env_vars(tmp_path, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out, model_output=False)
     with pytest.raises(ValueError, match="BUCKET_"):
         handler._package_s3(out, "doc")
 
 
-def test_package_s3_complains_about_each_missing_env_var(tmp_path, monkeypatch):
+def test_package_s3_complains_about_each_missing_env_var(tmp_path, seed_mineru_output, monkeypatch):
     # All four names should be mentioned in the error.
     for var in (
         "BUCKET_ENDPOINT_URL",
@@ -107,7 +95,7 @@ def test_package_s3_complains_about_each_missing_env_var(tmp_path, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out, model_output=False)
     with pytest.raises(ValueError) as excinfo:
         handler._package_s3(out, "doc")
     msg = str(excinfo.value)
@@ -117,7 +105,7 @@ def test_package_s3_complains_about_each_missing_env_var(tmp_path, monkeypatch):
     assert "BUCKET_SECRET_ACCESS_KEY" in msg
 
 
-def test_package_s3_signs_with_the_configured_lifetime(tmp_path, monkeypatch):
+def test_package_s3_signs_with_the_configured_lifetime(tmp_path, seed_mineru_output, monkeypatch):
     """The knob has to reach the signing call and the reported value, not just
     resolve correctly on its own."""
     # package_s3 imports boto3 lazily, so the patch goes on the module itself.
@@ -146,7 +134,7 @@ def test_package_s3_signs_with_the_configured_lifetime(tmp_path, monkeypatch):
 
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out, model_output=False)
     result = handler._package_s3(out, "doc")
 
     assert recorded["expires_in"] == 900
@@ -155,10 +143,10 @@ def test_package_s3_signs_with_the_configured_lifetime(tmp_path, monkeypatch):
     assert result["bucket_bytes"] > 0
 
 
-def test_build_tarball_bytes_roundtrip(tmp_path):
+def test_build_tarball_bytes_roundtrip(tmp_path, seed_mineru_output):
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out, model_output=False)
     data = handler._build_tarball_bytes(out)
     # Should be valid gzip-tar with the seeded files inside.
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
@@ -167,12 +155,12 @@ def test_build_tarball_bytes_roundtrip(tmp_path):
     assert "structured_content.json" in names
 
 
-def test_build_zip_bytes_roundtrip(tmp_path):
+def test_build_zip_bytes_roundtrip(tmp_path, seed_mineru_output):
     import zipfile  # noqa: PLC0415
 
     out = tmp_path / "out"
     out.mkdir()
-    _seed_mineru_output(out, "doc")
+    seed_mineru_output(out, model_output=False)
     data = handler._build_zip_bytes(out)
     assert data[:4] == b"PK\x03\x04"  # zip magic
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
