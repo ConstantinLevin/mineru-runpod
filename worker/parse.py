@@ -12,6 +12,8 @@ from runpod_doc_worker.contract import degraded as _degraded
 from runpod_doc_worker.obs import logging as _logging
 from runpod_doc_worker.obs import redact as _redact
 
+from worker import harness as _harness
+
 # MinerU's heavy imports run lazily inside run_mineru so the handler module
 # itself imports on a CPU-only test machine (CI exercises input validation
 # and packaging without needing a GPU). Module-level only does a soft probe
@@ -127,12 +129,12 @@ async def run_mineru(
     # Written beside the output directory and moved in once complete, so a write that
     # fails midway leaves nothing in the directory that is packaged; the stray file
     # goes with the job's temporary directory.
-    staged = work_dir / "markdown_full.md.partial"
+    staged = work_dir / f"{_harness.MARKDOWN_FULL_FILE}.partial"
     try:
-        saved = ParseResult.from_json((output_dir / "middle_json.json").read_text(encoding="utf-8"))
+        saved = ParseResult.from_json((output_dir / _harness.MIDDLE_JSON_FILE).read_text(encoding="utf-8"))
         full = saved.markdown(mode=RenderMode.FULL)
         staged.write_text(full, encoding="utf-8")
-        os.replace(staged, output_dir / "markdown_full.md")
+        os.replace(staged, output_dir / _harness.MARKDOWN_FULL_FILE)
     except Exception as exc:  # noqa: BLE001 - whatever MinerU's renderer raises
         # The renderer's exception can quote the document and URLs inside it: log it
         # through the same reduction as a failed job's error.
@@ -143,7 +145,7 @@ async def run_mineru(
         )
         (lost if lost is not None else _degraded.Report()).note(
             reason=_degraded.UNREADABLE,
-            file="markdown_full.md",
+            file=_harness.MARKDOWN_FULL_FILE,
             artifact="markdown_full",
             error_type=type(exc).__name__,
         )
@@ -161,7 +163,7 @@ def reported_settings(output_dir: Path, *, image_analysis: bool) -> dict[str, An
     """
     unknown: dict[str, Any] = {"tier": None, "ocr_mode": None, "image_analysis": None}
     try:
-        middle = json.loads((output_dir / "middle_json.json").read_text(encoding="utf-8"))
+        middle = json.loads((output_dir / _harness.MIDDLE_JSON_FILE).read_text(encoding="utf-8"))
         noted = middle["extensions"]["mineru"]
         tier, ocr_mode = noted["tier"], noted["parse_mode"]
     except (OSError, ValueError, KeyError, TypeError):

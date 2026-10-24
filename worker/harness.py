@@ -117,10 +117,15 @@ config.configure(
 _response_size.ENFORCE_RESPONSE_CAP = True
 _response_size.BULKY_ARTIFACT = "middle_json"
 
+# The two files the worker itself touches in MinerU's output directory: it reads
+# the middle JSON back, and writes the full-mode markdown beside it.
+MIDDLE_JSON_FILE = "middle_json.json"
+MARKDOWN_FULL_FILE = "markdown_full.md"
+
 MANIFEST = (
     Artifact("markdown", ("markdown.md",), kind="text", required=True),
-    Artifact("markdown_full", ("markdown_full.md",), kind="text"),
-    Artifact("middle_json", ("middle_json.json",), kind="json"),
+    Artifact("markdown_full", (MARKDOWN_FULL_FILE,), kind="text"),
+    Artifact("middle_json", (MIDDLE_JSON_FILE,), kind="json"),
     Artifact("structured_content", ("structured_content.json",), kind="json"),
     Artifact("model_output", ("model_output.json",), kind="json"),
     Artifact("images", ("images/*",), kind="b64map"),
