@@ -121,3 +121,21 @@ and are easy to trip:
   them; they fail in both directions until the lists agree.
 - `npm run build`, `validate:links` and `validate:routes` in `docs/` when docs
   changed.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues in the fork `ConstantinLevin/mineru-runpod`, with every `gh` command pinned by `-R`. The shared spec lives in `ConstantinLevin/Mineroo`, and nothing is ever filed in `sergeyshmakov/mineru-runpod`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The default seven labels, each label string equal to its role name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one root `GLOSSARY.md`, plus `docs/adr/`, both created when first needed. See `docs/agents/domain.md`.
+
+### External peers
+
+`auto`: the Claude adapter (`claude-opus-5-5`, effort `high`) or the Codex adapter (CLI-default model, effort `high`), chosen from the host family. See `docs/agents/cross-model.json`.
