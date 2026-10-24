@@ -205,7 +205,7 @@ For `transport: "tarball_b64"` and `transport: "s3"`, `formats` is a no-op: the 
 
 A parse can produce a file that cannot then be read — bytes that are not the UTF-8 the artifact is declared as, JSON truncated by a disk that filled mid-write, an image the filesystem will no longer describe. One corrupt file does not fail the job: the artifact comes back as its empty default, or the archive ships without that member, and the entry gains a `degraded` object saying so.
 
-The worker adds one file of its own, `markdown_full.md`. When it cannot be rendered or written, the job still succeeds: the file is left out (`markdown_full` is `""` inline, absent from the archive) and `degraded` names it with `reason: "unreadable"`. That is reported even when `formats` did not ask for `markdown_full`.
+The worker adds one file of its own, `markdown_full.md`. When it cannot be rendered or written, the job still succeeds: the file is left out (inline, `markdown_full` is `""` when `formats` selects it and absent otherwise; it is absent from the archive) and `degraded` names it with `reason: "unreadable"`. That is reported even when `formats` did not ask for `markdown_full`.
 
 ```json
 {
