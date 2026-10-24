@@ -83,7 +83,8 @@ Datadog) accepts exponential histograms.
 
 A job's `tier` label is the tier MinerU read it with, the top-level `tier` of
 the response: an Office or HTML file asked for in `advanced` is counted under
-`flash`. Only the warmup's label is the tier it asked for.
+`flash`. Where that `tier` is `null` (MinerU left no note), the label is the
+tier the job asked for, as is the warmup's.
 
 | Metric | Type | Labels | Question it answers |
 |---|---|---|---|
