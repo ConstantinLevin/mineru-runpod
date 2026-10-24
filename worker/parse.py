@@ -105,6 +105,9 @@ async def run_mineru(
     source.parent.mkdir(parents=True)
     source.write_bytes(file_bytes)
 
+    # MinerU rejects a range for anything that is not a PDF, an image included,
+    # and reads that file whole: the window is a PDF's alone.
+    page_range = _page_range(start_page, end_page) if suffix in filetypes.PAGE_RANGE_PARSE_EXTENSIONS else ""
     try:
         result = await _parse_async(
             source,
@@ -113,20 +116,23 @@ async def run_mineru(
             tier=filetypes.batch_effective_parse_tier(tier, suffix),
             ocr_mode=ocr_mode,
             image_analysis=image_analysis,
-            # MinerU rejects a range for anything that is not a PDF, an image included,
-            # and reads that file whole: the window is a PDF's alone.
-            page_range=(
-                _page_range(start_page, end_page) if suffix in filetypes.PAGE_RANGE_PARSE_EXTENSIONS else ""
-            ),
+            page_range=page_range,
         )
     except InvalidRequestError as exc:
-        if exc.param != "page_range":
+        if exc.param != "page_range" or not page_range:
             raise
         # MinerU checks the window against the PDF and names its own 1-based range,
-        # which the caller never sent: say which of their fields selects no page.
+        # which the caller never sent: say which of their fields selects no page, and
+        # which pages that is for a caller who counts from 1 (the compat client).
+        if end_page is None:
+            window = f"start_page={start_page} (page {start_page + 1} to the end, counting from 1)"
+        else:
+            window = (
+                f"start_page={start_page}, end_page={end_page} "
+                f"(pages {start_page + 1}-{end_page + 1}, counting from 1)"
+            )
         raise ValueError(
-            f"start_page={start_page}, end_page={-1 if end_page is None else end_page} selects no page "
-            f"of this PDF; pages count from 0, so start_page must be below its page count (MinerU: {exc})"
+            f"{window} selects no page of this PDF; start_page must be below its page count (MinerU: {exc})"
         ) from exc
 
     output_dir = work_dir / "output"

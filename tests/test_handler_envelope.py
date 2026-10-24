@@ -358,14 +358,15 @@ def test_the_page_window_becomes_a_one_based_page_range(fake_mineru, job_pages, 
 @pytest.mark.parametrize(
     ("job_pages", "named"),
     [
-        ({"start_page": 3}, "start_page=3, end_page=-1"),
-        ({"start_page": 5, "end_page": 9}, "start_page=5, end_page=9"),
+        ({"start_page": 3}, "start_page=3 (page 4 to the end, counting from 1)"),
+        ({"start_page": 5, "end_page": 9}, "start_page=5, end_page=9 (pages 6-10, counting from 1)"),
     ],
 )
 def test_a_window_that_selects_no_page_is_refused_in_the_jobs_own_terms(fake_mineru, job_pages, named, run_job):
     """MinerU checks the window against the PDF and names its own 1-based range,
     which the caller never sent: a 3-page PDF asked for from start_page 3 comes
-    back as a "reversed" '4-r1'. The refusal names the fields the caller did send."""
+    back as a "reversed" '4-r1'. The refusal names the fields the caller did send,
+    and the pages in the 1-based terms a compat-client caller sent them in."""
     fake_mineru.state["error"] = fake_mineru.InvalidRequestError(
         "page_range_invalid", "Invalid page range '4-r1': reversed ranges are not supported", "page_range"
     )
@@ -373,6 +374,18 @@ def test_a_window_that_selects_no_page_is_refused_in_the_jobs_own_terms(fake_min
     assert result["ok"] is False
     assert named in result["error"]
     assert "reversed ranges are not supported" in result["error"], "MinerU's own reason is kept"
+
+
+def test_a_page_refusal_without_a_window_is_reported_as_mineru_gave_it(fake_mineru, run_job):
+    """A PDF in which MinerU counts no page is refused with a page-range error
+    even when the job sent no window: there is no start_page to blame."""
+    fake_mineru.state["error"] = fake_mineru.InvalidRequestError(
+        "page_range_invalid", "Invalid page range '': document has no available pages", "page_range"
+    )
+    result = run_job()
+    assert result["ok"] is False
+    assert "document has no available pages" in result["error"]
+    assert "start_page" not in result["error"]
 
 
 def test_a_refusal_that_is_not_about_the_window_is_reported_as_mineru_gave_it(fake_mineru, run_job):
