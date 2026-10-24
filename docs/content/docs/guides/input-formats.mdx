@@ -1,6 +1,6 @@
 ---
 title: Input formats
-description: PDF, images, Office, OpenDocument, RTF, EPUB, OFD, HTML/MHTML and CSV/TSV — what the worker accepts, how MinerU 4 detects the type, and how each is read.
+description: PDF, images, Office, OpenDocument, RTF, EPUB, OFD and HTML/MHTML — what the worker accepts, how MinerU 4 detects the type, and how each is read.
 ---
 
 The worker accepts every file type MinerU 4 reads, through the same three sources (`file_url`, `file_b64`, `volume_path`). The type is **detected by MinerU from the input bytes** — there's no `format` field to set, and the field name `file_*` is intentionally format-agnostic. Send whichever source you have; MinerU detects the type.
@@ -11,11 +11,11 @@ The worker accepts every file type MinerU 4 reads, through the same three source
 |---|---|
 | **PDF** | With the `tier`, `ocr_mode` and `image_analysis` of the job. The only type that takes a page window (`start_page` / `end_page`) |
 | **Image** (PNG / JPEG / GIF / BMP / TIFF / WebP / JP2) | As a one-page PDF, with the same settings. MinerU makes the page itself; the worker passes the file as it is. DocVortex 0.5.16 opens the image once and makes one page of it, so the later frames of a multi-frame TIFF or GIF are, by reading its source, not read (not run against a real file): send multi-page scans as a PDF |
-| **Office** (DOC / DOCX / PPT / PPTX / XLS / XLSX), **OpenDocument** (ODT / ODS / ODP), **RTF**, **EPUB**, **OFD**, **HTML / MHTML**, **CSV / TSV** | As whole documents, without models, in tier `flash`. The job's `tier`, `ocr_mode` and `image_analysis` have no effect on them, and the response says `tier: "flash"` |
+| **Office** (DOC / DOCX / PPT / PPTX / XLS / XLSX), **OpenDocument** (ODT / ODS / ODP), **RTF**, **EPUB**, **OFD**, **HTML / MHTML** | As whole documents, without models, in tier `flash`. The job's `tier`, `ocr_mode` and `image_analysis` have no effect on them, and the response says `tier: "flash"` |
 
 MinerU decides the type from the content: from the file's signature and container structure, and for text such as HTML from its content classifier — a job carries no file name (`basename` has no extension). Whether that holds for a given HTML file is something to check on your own material.
 
-Plain text, Markdown and other text formats are not parsed; the job fails with the type MinerU detected.
+Plain text, Markdown and other text formats are not parsed; the job fails with the type MinerU detected. CSV and TSV are among them here, although MinerU reads them from a named file: delimited text has no signature, so without a file name MinerU detects it as plain text (`txt`).
 
 ## What gets returned
 

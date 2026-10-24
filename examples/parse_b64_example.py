@@ -2,7 +2,7 @@
 
 Accepts any format the worker supports: PDF, image
 (PNG/JPEG/GIF/BMP/TIFF/WebP/JP2), Office, OpenDocument, RTF, EPUB, OFD,
-HTML/MHTML, CSV/TSV. Only practical for files ≤ ~10 MB on /run and ~20 MB on
+HTML/MHTML. Only practical for files ≤ ~10 MB on /run and ~20 MB on
 /runsync — RunPod's gateway rejects bigger payloads. For larger files, use
 a URL or a mounted volume_path.
 

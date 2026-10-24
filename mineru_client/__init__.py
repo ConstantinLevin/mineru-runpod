@@ -24,7 +24,7 @@ Two clients, same endpoint:
     done = client.wait_for_task(task_id)
     client.download_results(done, "./out")
 
-Accepts every file type MinerU 4 reads: PDF and images, Office, OpenDocument, RTF, EPUB, OFD, HTML/MHTML, CSV/TSV.
+Accepts every file type MinerU 4 reads: PDF and images, Office, OpenDocument, RTF, EPUB, OFD, HTML/MHTML.
 """
 
 from .api_compat import MineruApiClient

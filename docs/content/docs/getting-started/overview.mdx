@@ -51,7 +51,7 @@ See the [project README](https://github.com/sergeyshmakov/mineru-runpod#how-does
 
 ## What it accepts and what comes back
 
-- **Inputs**: every file type MinerU 4 reads — PDF, images, Office, OpenDocument, RTF, EPUB, OFD, HTML/MHTML and CSV/TSV — auto-detected from bytes. Three sources: URL, base64, or a path on a mounted volume. See [Input formats](/guides/input-formats/).
+- **Inputs**: every file type MinerU 4 reads — PDF, images, Office, OpenDocument, RTF, EPUB, OFD and HTML/MHTML — auto-detected from bytes. Three sources: URL, base64, or a path on a mounted volume. See [Input formats](/guides/input-formats/).
 - **Outputs**: `markdown.md`, `markdown_full.md`, `middle_json.json`, `structured_content.json`, `model_output.json` and `images/`. Three transport modes: base64 tarball, inline fields, or presigned URL to an S3-compatible bucket. See [Output modes](/guides/output-modes/).
 - **Tiers**: `flash`, `basic`, `standard` and `advanced` (the default), with forced OCR and image analysis by default; each is chosen per job. See [Picking a tier](/guides/choosing-gpu/#picking-a-tier).
 

@@ -107,8 +107,8 @@ class MineruClient:
 
         Input formats (detected by MinerU 4 from the bytes):
             PDF and images (PNG/JPEG/GIF/BMP/TIFF/WebP/JP2); as whole documents
-            Office (DOC/DOCX/PPT/PPTX/XLS/XLSX), OpenDocument, RTF, EPUB, OFD,
-            HTML/MHTML and CSV/TSV.
+            Office (DOC/DOCX/PPT/PPTX/XLS/XLSX), OpenDocument, RTF, EPUB, OFD
+            and HTML/MHTML.
 
         How the document is read (MinerU 4):
             tier            "flash" | "basic" | "standard" | "advanced" (default).

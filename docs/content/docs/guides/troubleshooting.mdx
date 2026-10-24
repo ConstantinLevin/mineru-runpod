@@ -354,7 +354,7 @@ Typical lines on a successful job:
 On failure:
 
 ```json
-{"ts":"2026-05-25T18:30:42.789Z","level":"error","logger":"mineru-worker","message":"job failed","job_id":"queued-uuid-abc","error_type":"ValueError","error_message":"input is not a file type MinerU 4.0.12 reads (detected 'txt'). It reads PDF, images, Office, OpenDocument, RTF, EPUB, OFD, HTML, MHTML and CSV/TSV files.","phase_ms":{"fetch_input":8}}
+{"ts":"2026-05-25T18:30:42.789Z","level":"error","logger":"mineru-worker","message":"job failed","job_id":"queued-uuid-abc","error_type":"ValueError","error_message":"input is not a file type MinerU 4.0.12 reads (detected 'txt'). It reads PDF, images, Office, OpenDocument, RTF, EPUB, OFD, HTML and MHTML files.","phase_ms":{"fetch_input":8}}
 ```
 
 On a job that succeeded but lost part of its output — a file MinerU wrote and

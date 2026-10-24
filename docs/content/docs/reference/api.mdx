@@ -36,7 +36,7 @@ curl --request POST "https://api.runpod.ai/v2/<endpoint-id>/runsync" \
 
 ### Required (exactly one of)
 
-The worker accepts every file type MinerU 4 reads, detected by MinerU from the bytes (a job carries no file name): PDF and images (PNG, JPEG, GIF, BMP, TIFF, WebP, JP2), and as whole documents Office (DOC, DOCX, PPT, PPTX, XLS, XLSX), OpenDocument (ODT, ODS, ODP), RTF, EPUB, OFD, HTML/MHTML and CSV/TSV. A file MinerU does not recognise fails the job with the type it detected (or says it found none), and one it recognises but cannot read fails it with MinerU's own reason; either way the response's `error` carries it. **Provide exactly one input source; providing zero or two raises a validation error.**
+The worker accepts every file type MinerU 4 reads, detected by MinerU from the bytes (a job carries no file name): PDF and images (PNG, JPEG, GIF, BMP, TIFF, WebP, JP2), and as whole documents Office (DOC, DOCX, PPT, PPTX, XLS, XLSX), OpenDocument (ODT, ODS, ODP), RTF, EPUB, OFD and HTML/MHTML. CSV and TSV are not accepted: without a file name MinerU detects delimited text as plain text, which it does not read. A file MinerU does not recognise fails the job with the type it detected (or says it found none), and one it recognises but cannot read fails it with MinerU's own reason; either way the response's `error` carries it. **Provide exactly one input source; providing zero or two raises a validation error.**
 
 | Field | Type | Notes |
 |---|---|---|

@@ -186,8 +186,16 @@ def test_a_file_mineru_does_not_read_is_turned_away_before_any_parse(fake_mineru
 def test_the_reason_for_turning_a_file_away_names_what_is_read(fake_mineru, run_job):
     fake_mineru.state["suffix"] = "txt"
     error = run_job(b"just text")["error"]
-    for readable in ("PDF", "images", "Office", "OpenDocument", "RTF", "EPUB", "OFD", ", HTML, MHTML and CSV/TSV"):
+    for readable in ("PDF", "images", "Office", "OpenDocument", "RTF", "EPUB", "OFD", ", HTML and MHTML files"):
         assert readable in error
+
+
+def test_the_reason_for_turning_a_file_away_does_not_offer_csv(fake_mineru, run_job):
+    """Delimited text carries no signature, and a job carries no file name: MinerU
+    detects a CSV or TSV as `txt`, which it does not read. The reason must not
+    send the caller back with the same file."""
+    fake_mineru.state["suffix"] = "txt"
+    assert "CSV" not in run_job(b"a,b\n1,2\n")["error"]
 
 
 def test_bytes_mineru_cannot_place_are_turned_away_with_that_reason(fake_mineru, run_job):
