@@ -106,7 +106,7 @@ class MineruClient:
         ``MineruClient.first(result)`` to grab the entry without indexing.
 
         Input formats (detected by MinerU 4 from the bytes):
-            PDF and images (PNG/JPEG/GIF/BMP/TIFF/WebP); as whole documents
+            PDF and images (PNG/JPEG/GIF/BMP/TIFF/WebP/JP2); as whole documents
             Office (DOC/DOCX/PPT/PPTX/XLS/XLSX), OpenDocument, RTF, EPUB, OFD,
             HTML/MHTML and CSV/TSV.
 
