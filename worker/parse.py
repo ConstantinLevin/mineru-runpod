@@ -125,6 +125,8 @@ async def run_mineru(
         (output_dir / "markdown_full.md").write_text(full, encoding="utf-8")
     except Exception as exc:  # noqa: BLE001 - whatever MinerU's renderer raises
         _logging.warning("full-mode markdown could not be rendered", error=repr(exc))
+        # A write that failed midway must not leave a file that reads as the document.
+        (output_dir / "markdown_full.md").unlink(missing_ok=True)
         (lost if lost is not None else _degraded.Report()).note(
             reason=_degraded.UNREADABLE,
             file="markdown_full.md",

@@ -251,3 +251,20 @@ def test_a_parse_without_an_importable_mineru_says_why(monkeypatch, tmp_path):
     monkeypatch.setattr(parse, "MINERU_IMPORT_ERROR", "ModuleNotFoundError: no module named docvortex")
     with pytest.raises(RuntimeError, match="docvortex"):
         _run(PDF, tmp_path)
+
+
+def test_a_full_mode_file_that_fails_midway_is_not_left_behind(mineru, tmp_path, monkeypatch):
+    """A half-written markdown_full.md would ship and read as the document."""
+    real_write = Path.write_text
+
+    def failing_write(self, data, *args, **kwargs):
+        if self.name == "markdown_full.md":
+            real_write(self, "# h", *args, **kwargs)
+            raise OSError("no space left on device")
+        return real_write(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing_write)
+    lost = degraded.Report()
+    out = _run(PDF, tmp_path, lost=lost)
+    assert not (out / "markdown_full.md").exists()
+    assert lost.count == 1

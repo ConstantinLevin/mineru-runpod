@@ -11,7 +11,7 @@ You should expect an initial response within 5 working days.
 In scope:
 - Code injection / unsafe deserialization in `handler.py` or `mineru_client/`
 - Path traversal via `volume_path` or `basename`
-- Malicious input bytes (PDF / image / DOCX / PPTX / XLSX) that bypass `_detect_format` and reach MinerU in an unexpected code path
+- Malicious input bytes (any file type MinerU 4 reads: PDF, image, Office, HTML, ...) that reach MinerU in an unexpected code path. The worker's own `_detect_format` is only a telemetry label now; MinerU decides what a file is
 - Resource exhaustion via crafted input that bypasses the documented limits (`MAX_INLINE_FILE_MB`, page-range bounds, etc.)
 - Exposure of `RUNPOD_API_KEY`, `HF_TOKEN`, or `BUCKET_*` credentials through the code paths in this repo or in worker logs / responses
 - S3 upload path: presigned URL leakage, bucket-key collisions, signature replay

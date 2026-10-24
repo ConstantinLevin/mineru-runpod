@@ -303,7 +303,7 @@ If you can't wire S3, the fallback is **page chunking**: split with `start_page`
 Most common reasons:
 
 - **`file_url` returned an HTML error page** instead of the file (wrong or expired URL, or auth in front of it). MinerU 4 reads HTML, so this no longer fails: the job succeeds and `markdown` holds the error page's text.
-- **`file_b64` was double-encoded or not base64**. The decoded bytes are random and MinerU names no type it reads.
+- **`file_b64` was double-encoded**. It decodes, but to base64 text rather than the file, and MinerU names no type it reads. (A string that is not base64 at all fails earlier, with `file_b64 is not valid base64`.)
 - **`volume_path` points at a plain-text file** (`.txt`, Markdown). MinerU does not parse those; convert to PDF first.
 
 **Fix**: verify the bytes. Download from your `file_url` directly with `curl`, run `file` on the result, look at the first lines of `markdown`, or hex-dump the start of the decoded `file_b64` and check the magic bytes.
