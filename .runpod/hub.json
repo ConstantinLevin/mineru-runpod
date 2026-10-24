@@ -18,7 +18,7 @@
         "input": {
           "name": "VRAM MinerU plans with (GB)",
           "type": "string",
-          "description": "GB of VRAM MinerU plans with instead of the card's real size. vLLM's share is 6/this, so a LOWER number gives vLLM MORE memory. Empty = the card's size.",
+          "description": "GB MinerU plans with instead of the card's size. vLLM gets 6/this of the card, so LOWER gives vLLM MORE. Use more than 8: at 8 or less vLLM asks for the whole card. Empty = card size.",
           "default": "",
           "advanced": true
         }
