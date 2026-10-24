@@ -141,6 +141,26 @@ def test_a_file_without_a_download_record_is_a_failure_not_a_pass(verify, tmp_pa
     assert "OCR/det.pth" in problem
 
 
+@pytest.mark.parametrize("marker_dir", ["", "Layout/PP-DocLayoutV2"])
+def test_minerus_completion_marker_is_not_a_file_that_lacks_a_record(verify, tmp_path, marker_dir) -> None:
+    """After the download MinerU touches `.mineru_complete` in the repository root, or
+    in each required directory. Hugging Face never recorded it, and `mineru-kit models
+    verify` needs it, so a good download carries one on every build."""
+    _download(tmp_path, REPO, "Layout/PP-DocLayoutV2/model.onnx", EXPECTED)
+    (tmp_path / REPO / marker_dir / ".mineru_complete").touch()
+    assert verify.check(tmp_path, {REPO: EXPECTED}) == []
+
+
+def test_a_file_named_like_the_marker_does_not_excuse_an_unrecorded_one(verify, tmp_path) -> None:
+    _download(tmp_path, REPO, "Layout/model.onnx", EXPECTED)
+    (tmp_path / REPO / ".mineru_complete").touch()
+    (tmp_path / REPO / "OCR").mkdir()
+    (tmp_path / REPO / "OCR" / "det.pth").write_bytes(b"weights")
+    (problem,) = verify.check(tmp_path, {REPO: EXPECTED})
+    assert "OCR/det.pth" in problem
+    assert ".mineru_complete" not in problem
+
+
 def test_a_missing_repository_directory_is_reported(verify, tmp_path) -> None:
     (problem,) = verify.check(tmp_path, {REPO: EXPECTED})
     assert REPO in problem

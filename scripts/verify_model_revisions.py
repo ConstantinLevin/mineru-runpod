@@ -31,13 +31,19 @@ def _commits(repo_dir: Path) -> set[str]:
     return commits
 
 
+# MinerU touches this in the repository root, or in each required directory, once the
+# download is done (`mineru/model/download.py`, MODEL_COMPLETE_MARKER); `mineru-kit
+# models verify` reads it as "ready". It is MinerU's own file, not a download.
+_MINERU_MARKER = ".mineru_complete"
+
+
 def _unrecorded(repo_dir: Path) -> list[str]:
     """Downloaded files that have no record of the commit they came from."""
     records = repo_dir / ".cache" / "huggingface" / "download"
     missing = []
     for file in sorted(repo_dir.rglob("*")):
         relative = file.relative_to(repo_dir)
-        if not file.is_file() or relative.parts[0] == ".cache":
+        if not file.is_file() or relative.parts[0] == ".cache" or file.name == _MINERU_MARKER:
             continue
         if not (records / f"{relative.as_posix()}.metadata").is_file():
             missing.append(relative.as_posix())
