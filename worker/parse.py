@@ -52,15 +52,29 @@ def probe_mineru() -> tuple[bool, str, str | None]:
 MINERU_AVAILABLE, MINERU_VERSION, MINERU_IMPORT_ERROR = probe_mineru()
 
 
+def _first_and_last_page(start_page: int, end_page: int | None) -> tuple[int, int | None]:
+    """The job's 0-based inclusive window as 1-based first and last pages; no last page is the end."""
+    return start_page + 1, None if end_page is None else end_page + 1
+
+
 def _page_range(start_page: int, end_page: int | None) -> str:
     """The job's 0-based inclusive window as MinerU's 1-based `page_range`.
 
     The whole document is no range at all, and "r1" is MinerU's spelling of the
     last page. Whether a file takes a range is decided by the caller.
     """
-    if end_page is None:
-        return "" if start_page == 0 else f"{start_page + 1}-r1"
-    return f"{start_page + 1}-{end_page + 1}"
+    first, last = _first_and_last_page(start_page, end_page)
+    if last is None:
+        return "" if first == 1 else f"{first}-r1"
+    return f"{first}-{last}"
+
+
+def _window_in_words(start_page: int, end_page: int | None) -> str:
+    """The job's window in its own fields, and in pages counted from 1 as the compat client sends them."""
+    first, last = _first_and_last_page(start_page, end_page)
+    if last is None:
+        return f"start_page={start_page} (page {first} to the end, counting from 1)"
+    return f"start_page={start_page}, end_page={end_page} (pages {first}-{last}, counting from 1)"
 
 
 async def run_mineru(
@@ -122,17 +136,10 @@ async def run_mineru(
         if exc.param != "page_range" or not page_range:
             raise
         # MinerU checks the window against the PDF and names its own 1-based range,
-        # which the caller never sent: say which of their fields selects no page, and
-        # which pages that is for a caller who counts from 1 (the compat client).
-        if end_page is None:
-            window = f"start_page={start_page} (page {start_page + 1} to the end, counting from 1)"
-        else:
-            window = (
-                f"start_page={start_page}, end_page={end_page} "
-                f"(pages {start_page + 1}-{end_page + 1}, counting from 1)"
-            )
+        # which the caller never sent: say which of their fields selects no page.
         raise ValueError(
-            f"{window} selects no page of this PDF; start_page must be below its page count (MinerU: {exc})"
+            f"{_window_in_words(start_page, end_page)} selects no page of this PDF; "
+            f"start_page must be below its page count (MinerU: {exc})"
         ) from exc
 
     output_dir = work_dir / "output"
