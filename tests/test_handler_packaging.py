@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 import tarfile
 from pathlib import Path
 
@@ -228,14 +229,15 @@ def test_a_full_mode_render_that_fails_costs_that_file_not_the_parse(fake_mineru
 
 
 @pytest.mark.parametrize("transport", ["inline", "tarball_b64"])
-@pytest.mark.parametrize("removal_works", [True, False])
-def test_a_full_mode_file_that_fails_midway_does_not_ship(
-    fake_mineru, monkeypatch, run_job, transport, removal_works
+@pytest.mark.parametrize(("fails_at", "error_type"), [("write", "OSError"), ("move", "PermissionError")])
+def test_a_full_mode_file_that_fails_before_it_is_complete_does_not_ship(
+    fake_mineru, monkeypatch, run_job, transport, fails_at, error_type
 ):
-    """A half-written markdown_full.md would read as the document. Whether anything
-    can be removed afterwards must not decide that, and neither the parse nor the
-    other files may be lost with it."""
-    real_write, real_unlink = Path.write_text, Path.unlink
+    """A half-written markdown_full.md would read as the document. The file is written
+    beside the output directory and moved in, so neither a write that stops midway nor
+    a move that is refused may leave anything of it in what is packaged, and neither
+    the parse nor the other files may be lost with it."""
+    real_write, real_replace = Path.write_text, os.replace
 
     def failing_write(self, data, *args, **kwargs):
         if self.name.startswith("markdown_full"):
@@ -243,14 +245,15 @@ def test_a_full_mode_file_that_fails_midway_does_not_ship(
             raise OSError("no space left on device")
         return real_write(self, data, *args, **kwargs)
 
-    def refusing_unlink(self, *args, **kwargs):
-        if self.name.startswith("markdown_full"):
+    def refusing_replace(src, dst, *args, **kwargs):
+        if Path(dst).name == "markdown_full.md":
             raise PermissionError("operation not permitted")
-        return real_unlink(self, *args, **kwargs)
+        return real_replace(src, dst, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "write_text", failing_write)
-    if not removal_works:
-        monkeypatch.setattr(Path, "unlink", refusing_unlink)
+    if fails_at == "write":
+        monkeypatch.setattr(Path, "write_text", failing_write)
+    else:
+        monkeypatch.setattr(os, "replace", refusing_replace)
     result = run_job(transport=transport)
 
     assert result["ok"] is True
@@ -265,7 +268,7 @@ def test_a_full_mode_file_that_fails_midway_does_not_ship(
         assert "markdown.md" in names
         assert not any(name.startswith("markdown_full") for name in names)
     assert entry["degraded"]["count"] == 1
-    assert entry["degraded"]["items"][0]["error_type"] == "OSError"
+    assert entry["degraded"]["items"][0]["error_type"] == error_type
 
 
 def test_the_log_line_for_a_failed_render_keeps_a_signed_url_query_out(fake_mineru, monkeypatch, capsys, run_job):

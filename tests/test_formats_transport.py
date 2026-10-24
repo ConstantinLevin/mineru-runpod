@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import pytest
 
 from worker.schema import VALID_FORMATS, validate_input
