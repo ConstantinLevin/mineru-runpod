@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from worker.schema import VALID_FORMATS, validate_input
@@ -184,7 +186,7 @@ def test_a_file_mineru_does_not_read_is_turned_away_before_any_parse(fake_mineru
 def test_the_reason_for_turning_a_file_away_names_what_is_read(fake_mineru, run_job):
     fake_mineru.state["suffix"] = "txt"
     error = run_job(b"just text")["error"]
-    for readable in ("PDF", "images", "Office", "OpenDocument", "RTF", "EPUB", "OFD", "HTML", "MHTML", "CSV"):
+    for readable in ("PDF", "images", "Office", "OpenDocument", "RTF", "EPUB", "OFD", "HTML, MHTML and CSV/TSV"):
         assert readable in error
 
 
@@ -197,8 +199,6 @@ def test_bytes_mineru_cannot_place_are_turned_away_with_that_reason(fake_mineru,
 
 
 def test_a_file_mineru_recognises_but_cannot_read_fails_with_mineru_s_reason(fake_mineru, run_job, monkeypatch):
-    import sys  # noqa: PLC0415
-
     fake_mineru.state["suffix"] = "docx"
 
     async def unreadable(path, **kwargs):  # noqa: ARG001
