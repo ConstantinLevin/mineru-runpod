@@ -355,6 +355,36 @@ def test_the_page_window_becomes_a_one_based_page_range(fake_mineru, job_pages, 
     assert fake_mineru.calls[0]["page_range"] == page_range
 
 
+@pytest.mark.parametrize(
+    ("job_pages", "named"),
+    [
+        ({"start_page": 3}, "start_page=3, end_page=-1"),
+        ({"start_page": 5, "end_page": 9}, "start_page=5, end_page=9"),
+    ],
+)
+def test_a_window_that_selects_no_page_is_refused_in_the_jobs_own_terms(fake_mineru, job_pages, named, run_job):
+    """MinerU checks the window against the PDF and names its own 1-based range,
+    which the caller never sent: a 3-page PDF asked for from start_page 3 comes
+    back as a "reversed" '4-r1'. The refusal names the fields the caller did send."""
+    fake_mineru.state["error"] = fake_mineru.InvalidRequestError(
+        "page_range_invalid", "Invalid page range '4-r1': reversed ranges are not supported", "page_range"
+    )
+    result = run_job(**job_pages)
+    assert result["ok"] is False
+    assert named in result["error"]
+    assert "reversed ranges are not supported" in result["error"], "MinerU's own reason is kept"
+
+
+def test_a_refusal_that_is_not_about_the_window_is_reported_as_mineru_gave_it(fake_mineru, run_job):
+    fake_mineru.state["error"] = fake_mineru.InvalidRequestError(
+        "file_encrypted", "The PDF is encrypted and cannot be read", None
+    )
+    result = run_job(start_page=3)
+    assert result["ok"] is False
+    assert "The PDF is encrypted and cannot be read" in result["error"]
+    assert "start_page" not in result["error"]
+
+
 def test_a_parse_without_an_importable_mineru_says_why(monkeypatch, run_job):
     monkeypatch.setattr("worker.parse.MINERU_AVAILABLE", False)
     monkeypatch.setattr(

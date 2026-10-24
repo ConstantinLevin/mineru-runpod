@@ -59,6 +59,14 @@ class _FakeParseResult:
         return f"rendered:{mode.value if mode else 'none'}"
 
 
+class _InvalidRequestError(Exception):
+    """MinerU 4's `mineru.errors.InvalidRequestError`: a code, a message, the request field."""
+
+    def __init__(self, code: str = "invalid_request", message: str = "", param: str | None = None) -> None:
+        super().__init__(message or code)
+        self.code, self.message, self.param = code, message, param
+
+
 class _Writer:
     def __init__(self, parent_dir: str = "") -> None:
         self.parent = Path(parent_dir)
@@ -81,17 +89,21 @@ def fake_mineru(monkeypatch):
     `from_json` / `markdown`, `FileBasedDataWriter`, `guess_suffix_by_bytes`, the
     file-type tables, `RenderMode`) and records what the worker handed it.
     `calls` holds each `parse_async` call; `state` picks what the stand-in
-    detects and notes (`suffix`, `tier`, `parse_mode`).
+    detects and notes (`suffix`, `tier`, `parse_mode`), and `error`, when set,
+    is what `parse_async` raises instead of reading (MinerU's own
+    `InvalidRequestError` is `InvalidRequestError` on the returned namespace).
     """
     import sys  # noqa: PLC0415
 
     from worker import parse  # noqa: PLC0415
 
     calls: list[dict] = []
-    state = {"suffix": "pdf", "tier": "advanced", "parse_mode": "ocr"}
+    state = {"suffix": "pdf", "tier": "advanced", "parse_mode": "ocr", "error": None}
 
     async def parse_async(path, **kwargs):
         calls.append({"path": Path(path), "bytes": Path(path).read_bytes(), **kwargs})
+        if state["error"] is not None:
+            raise state["error"]
         return _FakeParseResult(
             {"extensions": {"mineru": {"tier": state["tier"], "parse_mode": state["parse_mode"]}}}
         )
@@ -104,6 +116,7 @@ def fake_mineru(monkeypatch):
 
     whole = frozenset({"docx", "html", "epub"})
     module("mineru")
+    module("mineru.errors", InvalidRequestError=_InvalidRequestError)
     module("mineru.parser", parse_async=parse_async)
     module("mineru.parser.base", ParseResult=_FakeParseResult)
     module("mineru.parser.writer", FileBasedDataWriter=_Writer)
@@ -120,7 +133,9 @@ def fake_mineru(monkeypatch):
     module("mineru.render")
     module("mineru.render.contracts", RenderMode=_RenderMode)
     monkeypatch.setattr(parse, "MINERU_AVAILABLE", True)
-    return types.SimpleNamespace(calls=calls, state=state, result_type=_FakeParseResult)
+    return types.SimpleNamespace(
+        calls=calls, state=state, result_type=_FakeParseResult, InvalidRequestError=_InvalidRequestError
+    )
 
 
 @pytest.fixture

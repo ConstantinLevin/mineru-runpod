@@ -83,6 +83,7 @@ async def run_mineru(
         raise RuntimeError(f"mineru is not importable: {MINERU_IMPORT_ERROR}")
     # Late re-import keeps the static import wrapped; the binding is the real one here.
     from mineru import filetypes  # type: ignore[import-not-found]  # noqa: PLC0415
+    from mineru.errors import InvalidRequestError  # type: ignore[import-not-found]  # noqa: PLC0415
     from mineru.parser import parse_async as _parse_async  # type: ignore[import-not-found]  # noqa: PLC0415
     from mineru.parser.base import ParseResult  # type: ignore[import-not-found]  # noqa: PLC0415
     from mineru.parser.file_type import guess_suffix_by_bytes  # type: ignore[import-not-found]  # noqa: PLC0415
@@ -104,19 +105,29 @@ async def run_mineru(
     source.parent.mkdir(parents=True)
     source.write_bytes(file_bytes)
 
-    result = await _parse_async(
-        source,
-        # Everything that is not a PDF or an image is read whole, without models,
-        # and MinerU asks for the tier to say so.
-        tier=filetypes.batch_effective_parse_tier(tier, suffix),
-        ocr_mode=ocr_mode,
-        image_analysis=image_analysis,
-        # MinerU rejects a range for anything that is not a PDF, an image included,
-        # and reads that file whole: the window is a PDF's alone.
-        page_range=(
-            _page_range(start_page, end_page) if suffix in filetypes.PAGE_RANGE_PARSE_EXTENSIONS else ""
-        ),
-    )
+    try:
+        result = await _parse_async(
+            source,
+            # Everything that is not a PDF or an image is read whole, without models,
+            # and MinerU asks for the tier to say so.
+            tier=filetypes.batch_effective_parse_tier(tier, suffix),
+            ocr_mode=ocr_mode,
+            image_analysis=image_analysis,
+            # MinerU rejects a range for anything that is not a PDF, an image included,
+            # and reads that file whole: the window is a PDF's alone.
+            page_range=(
+                _page_range(start_page, end_page) if suffix in filetypes.PAGE_RANGE_PARSE_EXTENSIONS else ""
+            ),
+        )
+    except InvalidRequestError as exc:
+        if exc.param != "page_range":
+            raise
+        # MinerU checks the window against the PDF and names its own 1-based range,
+        # which the caller never sent: say which of their fields selects no page.
+        raise ValueError(
+            f"start_page={start_page}, end_page={-1 if end_page is None else end_page} selects no page "
+            f"of this PDF; pages count from 0, so start_page must be below its page count (MinerU: {exc})"
+        ) from exc
 
     output_dir = work_dir / "output"
     result.save(FileBasedDataWriter(str(output_dir)))
