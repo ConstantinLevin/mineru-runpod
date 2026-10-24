@@ -191,7 +191,7 @@ class MineruClient:
         if result is None:
             # Not a handler bug: the gateway dropped the response. See
             # `_no_output_message`.
-            raise MineruClientError(describe_dropped_response(transport, bulky_artifact="middle_json.json"))
+            raise MineruClientError(describe_dropped_response(transport, bulky_artifact="middle_json"))
         if not isinstance(result, dict):
             raise MineruClientError(f"unexpected handler return type: {type(result)}")
         if not result.get("ok", False):

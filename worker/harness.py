@@ -62,17 +62,17 @@ config.configure(
         # Reported in every response's `debug.model_dir` when the weights sit in
         # the Hugging Face cache. MinerU 4 does not keep them there: `mineru-kit
         # models download` writes into MinerU's own model directory
-        # ($MINERU_HOME/models), so this stays null until the harness can look
-        # somewhere else; `probe: true` shows the directory instead.
+        # ($MINERU_HOME/models), which the harness cannot look into, so this stays
+        # null on a healthy worker.
         model_globs=("models--opendatalab--MinerU*",),
-        # What the `probe: true` response tries to resolve in the Hugging Face
-        # cache: the small-model bundle and the VLM that tier `standard` bakes.
-        probe_model_ids=(
-            "opendatalab/MinerU-4_models_torch",
-            "opendatalab/MinerU2.5-Pro-2605-1.2B",
-        ),
+        # The `probe: true` response resolves these in the Hugging Face cache and
+        # reports a model that is not there as an issue. MinerU 4's models are never
+        # there, so naming them would flag every healthy worker; none are named.
+        probe_model_ids=(),
         # Things an operator can get wrong in a way that looks like a missing
-        # model, so the probe reports them alongside the HF ones.
+        # model. The probe echoes their values: where MinerU looks for its models
+        # (MINERU_HOME), that it loads them offline (MINERU_MODEL_SOURCE), which
+        # engines it was told to use, and the VRAM it plans with.
         probe_env_keys=(
             "MINERU_HOME",
             "MINERU_MODEL_SOURCE",
@@ -109,12 +109,13 @@ config.configure(
 # guide. Off by default there, because a library should not start raising from a
 # version bump; on here, because the alternative is a silent failure.
 #
-# BULKY_ARTIFACT names the heaviest optional output so the refusal can suggest the
-# smallest `formats` change that would fit. For MinerU 4 that is the middle JSON
-# on the strength of what it holds (every block with its spans); which optional
-# file is heaviest on the heaviest scans is still to be measured.
+# BULKY_ARTIFACT names the `formats` key of the heaviest optional output so the
+# refusal can suggest the smallest `formats` change that would fit. For MinerU 4
+# that is the middle JSON on the strength of what it holds (every block with its
+# spans); which optional file is heaviest on the heaviest scans is still to be
+# measured.
 _response_size.ENFORCE_RESPONSE_CAP = True
-_response_size.BULKY_ARTIFACT = "middle_json.json"
+_response_size.BULKY_ARTIFACT = "middle_json"
 
 MANIFEST = (
     Artifact("markdown", ("markdown.md",), kind="text", required=True),

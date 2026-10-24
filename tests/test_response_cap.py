@@ -72,7 +72,7 @@ def test_this_worker_turns_the_refusal_on():
 def test_the_refusal_can_name_this_engine_s_heaviest_artefact():
     """Without this the message suggests "a shorter formats list" and leaves the
     caller to work out which format is the bulk of a scan."""
-    assert response_size.BULKY_ARTIFACT == "middle_json.json"
+    assert response_size.BULKY_ARTIFACT == "middle_json"
 
 
 # -----------------------------------------------------------------------------
@@ -106,7 +106,9 @@ def test_the_refusal_says_how_to_get_the_output_anyway(oversized_result):
     """An error that only says "too large" leaves the caller guessing, so each
     of the three ways out is part of the contract."""
     error = oversized_result["error"]
-    assert "middle_json.json" in error     # drop the heaviest format
+    import re
+    # names the `formats` key a caller would leave out, not a file name
+    assert re.search(r"leaves out middle_json(?!\.)", error)
     assert 'transport="s3"' in error       # a presigned URL instead of bytes
     assert "start_page" in error           # a bounded page range
     # And why it was refused here rather than delivered and dropped.

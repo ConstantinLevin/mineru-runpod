@@ -61,7 +61,9 @@ def test_the_message_names_this_engine_s_bulky_artifact(
     _drop_the_response(client, monkeypatch)
     with pytest.raises(MineruClientError) as caught:
         client.parse_document(file_url="https://example.com/scan.pdf")
-    assert "middle_json.json" in str(caught.value)
+    import re
+
+    assert re.search(r"middle_json(?!\.)", str(caught.value))
 
 
 def test_a_non_dict_response_is_still_reported_as_a_type_error(

@@ -68,3 +68,21 @@ def test_handler_probe_mode_returns_filesystem_dump():
     # behind a happy ok=true probe response.
     assert "mineru_available" in result
     assert isinstance(result["mineru_available"], bool)
+
+
+def test_the_probe_does_not_report_models_missing_from_the_hf_cache(monkeypatch, tmp_path):
+    """MinerU 4 keeps its baked models in $MINERU_HOME/models, never in the Hugging
+    Face cache, so asking the harness to resolve them there would report a missing
+    model on every healthy worker."""
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    result = asyncio.run(handler.handler({"input": {"probe": True}}))
+    assert result["ok"] is True
+    assert result["probe"]["resolution_attempts"] == []
+
+
+def test_the_probe_reports_where_mineru_looks_for_its_models(monkeypatch):
+    monkeypatch.setenv("MINERU_HOME", "/opt/mineru")
+    monkeypatch.setenv("MINERU_MODEL_SOURCE", "local")
+    env = asyncio.run(handler.handler({"input": {"probe": True}}))["probe"]["env"]
+    assert env["MINERU_HOME"] == "/opt/mineru"
+    assert env["MINERU_MODEL_SOURCE"] == "local"
