@@ -1,6 +1,6 @@
 # Backlog: Blackwell GPU support for the VLM backend
 
-**Status**: Blocked on MinerU upstream
+**Status**: Blocked on MinerU upstream -- written for the MinerU 3.4 image (vLLM 0.11.2); the image now builds on vLLM 0.21.0 and nothing below has been re-tested on it
 **Last verified**: 2026-05-27 against MinerU 3.2.0 + vLLM v0.11.2
 **Symptom**: Worker crashes at VLM model init on any Blackwell-architecture card (compute capability 12.0). The pipeline backend is unaffected.
 

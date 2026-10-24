@@ -60,5 +60,5 @@ Either real commands you ran, or "tests cover this". If the change is operator-
 facing (deploy.py / Dockerfile / endpoint config), include the exact `deploy.py`
 command you used and a one-line summary of the RunPod dashboard state. If the
 change is handler-side, paste the `debug` block from a real response so we can
-verify backend / model_dir / GPU.
+verify tier / model_dir / GPU.
 -->
