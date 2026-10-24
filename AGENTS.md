@@ -8,6 +8,19 @@ is no separate "release" step a human performs.
 Read that again before you commit anything, because it is the fact behind the
 rule below.
 
+## A merge to main is a release and a build
+
+A GitHub Release is what makes RunPod rebuild the template's image; a push
+alone does not. So every merge to `main` releases, and every release rebuilds
+the worker the endpoints pull.
+
+- **Merge to `main` only with the owner's approval of that merge.** Green CI,
+  an open PR or an approval of an earlier merge is not it.
+- **After every release, check the build before calling it done.** First that
+  the RunPod template carries the new image tag, then a test job whose response
+  names the installed MinerU version and the reading settings it used. The test
+  job costs money: run it on the owner's go.
+
 ## Versioning
 
 The version number here describes a **deployment template**, not a library on an
