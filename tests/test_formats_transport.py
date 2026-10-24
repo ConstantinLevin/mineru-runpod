@@ -158,6 +158,21 @@ def test_a_whole_document_format_is_read_in_tier_flash(fake_mineru, run_job):
     assert call["tier"] == "flash"
 
 
+@pytest.mark.parametrize(("suffix", "data"), [("docx", DOCX), ("html", b"<html></html>"), ("png", PNG)])
+def test_a_page_window_goes_to_mineru_only_with_a_pdf(fake_mineru, run_job, suffix, data):
+    """MinerU 4 rejects a page range for anything that is not a PDF (an image
+    included), so the worker sends none and the file is read whole."""
+    fake_mineru.state["suffix"] = suffix
+    assert run_job(data, start_page=2, end_page=4)["ok"] is True
+    assert fake_mineru.calls[0]["page_range"] == ""
+
+
+def test_the_response_says_a_whole_document_was_read_in_flash(fake_mineru, run_job):
+    fake_mineru.state.update(suffix="docx", tier="flash", parse_mode="txt")
+    result = run_job(DOCX, tier="advanced", ocr_mode="ocr", image_analysis=True)
+    assert (result["tier"], result["ocr_mode"], result["image_analysis"]) == ("flash", "txt", False)
+
+
 def test_a_file_mineru_does_not_read_is_turned_away_before_any_parse(fake_mineru, run_job):
     fake_mineru.state["suffix"] = "txt"
     result = run_job(b"just text")

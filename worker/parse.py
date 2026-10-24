@@ -53,9 +53,8 @@ MINERU_AVAILABLE, MINERU_VERSION, MINERU_IMPORT_ERROR = probe_mineru()
 def _page_range(start_page: int, end_page: int | None) -> str:
     """The job's 0-based inclusive window as MinerU's 1-based `page_range`.
 
-    The whole document is no range at all: MinerU rejects any range for a file
-    that is not a PDF, so an unbounded job must not send one. "r1" is MinerU's
-    spelling of the last page.
+    The whole document is no range at all, and "r1" is MinerU's spelling of the
+    last page. Whether a file takes a range is decided by the caller.
     """
     if end_page is None:
         return "" if start_page == 0 else f"{start_page + 1}-r1"
@@ -110,7 +109,11 @@ async def run_mineru(
         tier=filetypes.batch_effective_parse_tier(tier, suffix),
         ocr_mode=ocr_mode,
         image_analysis=image_analysis,
-        page_range=_page_range(start_page, end_page),
+        # MinerU rejects a range for anything that is not a PDF, an image included,
+        # and reads that file whole: the window is a PDF's alone.
+        page_range=(
+            _page_range(start_page, end_page) if suffix in filetypes.PAGE_RANGE_PARSE_EXTENSIONS else ""
+        ),
     )
 
     output_dir = work_dir / "output"

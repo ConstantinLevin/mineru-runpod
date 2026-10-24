@@ -114,6 +114,7 @@ def fake_mineru(monkeypatch):
     module(
         "mineru.filetypes",
         PARSEABLE_EXTENSIONS=frozenset({"pdf", "png", "jpg", "tiff"}) | whole,
+        PAGE_RANGE_PARSE_EXTENSIONS=frozenset({"pdf"}),
         batch_effective_parse_tier=lambda tier, ext: "flash" if ext in whole else tier,
     )
     module("mineru.render")
