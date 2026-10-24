@@ -175,6 +175,34 @@ def test_the_response_says_a_whole_document_was_read_in_flash(fake_mineru, run_j
     assert (result["tier"], result["ocr_mode"], result["image_analysis"]) == ("flash", "txt", False)
 
 
+def test_a_whole_document_is_counted_under_the_tier_it_was_read_in(fake_mineru, run_job, monkeypatch):
+    """A DOCX asked for in `advanced` is read in `flash`. Labelled `advanced`, a
+    model-free read would land in the VLM tier's job counts and throughput."""
+    from worker import telemetry  # noqa: PLC0415
+
+    counted = []
+    monkeypatch.setattr(telemetry, "counter_add", lambda name, value=1, **attrs: counted.append((name, attrs)))
+    monkeypatch.setattr(telemetry, "histogram_record", lambda name, value, **attrs: counted.append((name, attrs)))
+    fake_mineru.state.update(suffix="docx", tier="flash", parse_mode="txt")
+    # A window, ignored for a DOCX, so that the page metrics are recorded too.
+    result = run_job(DOCX, tier="advanced", start_page=0, end_page=2)
+    labelled = {name: attrs["tier"] for name, attrs in counted if "tier" in attrs}
+    assert labelled == {
+        "jobs_total": "flash", "pages_total": "flash", "job_duration": "flash", "pages_per_second": "flash",
+    }
+    assert result["debug"]["tier"] == "advanced", "debug.tier echoes the request (API reference)"
+
+
+def test_a_result_without_mineru_s_note_is_counted_under_the_tier_asked_for(fake_mineru, run_job, monkeypatch):
+    from worker import telemetry  # noqa: PLC0415
+
+    counted = []
+    monkeypatch.setattr(telemetry, "counter_add", lambda name, value=1, **attrs: counted.append((name, attrs)))
+    fake_mineru.state["tier"] = None
+    run_job(tier="standard")
+    assert [attrs["tier"] for name, attrs in counted if name == "jobs_total"] == ["standard"]
+
+
 def test_a_file_mineru_does_not_read_is_turned_away_before_any_parse(fake_mineru, run_job):
     fake_mineru.state["suffix"] = "txt"
     result = run_job(b"just text")

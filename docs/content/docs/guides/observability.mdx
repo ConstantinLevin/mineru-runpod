@@ -81,6 +81,10 @@ uniform resolution across those ranges without per-metric bucket
 tuning. Any modern OTLP backend (Axiom, Honeycomb, Grafana Mimir,
 Datadog) accepts exponential histograms.
 
+A job's `tier` label is the tier MinerU read it with, the top-level `tier` of
+the response: an Office or HTML file asked for in `advanced` is counted under
+`flash`. Only the warmup's label is the tier it asked for.
+
 | Metric | Type | Labels | Question it answers |
 |---|---|---|---|
 | `mineru.jobs.total` | counter | `status`, `tier`, `input_format` | How many jobs, what outcome? |
