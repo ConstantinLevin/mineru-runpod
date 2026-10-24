@@ -41,10 +41,10 @@ CYRILLIC = "д"
 def _fake_parse(monkeypatch, *, markdown: str) -> None:
     """Stand in for MinerU, writing one markdown artefact of a chosen size."""
 
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):  # noqa: ARG001
+    async def fake_run(file_bytes, *, work_dir, **kwargs):  # noqa: ARG001
         out = work_dir / "fake-out"
         out.mkdir()
-        (out / f"{basename}.md").write_text(markdown, encoding="utf-8")
+        (out / "markdown.md").write_text(markdown, encoding="utf-8")
         return out
 
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
@@ -72,7 +72,7 @@ def test_this_worker_turns_the_refusal_on():
 def test_the_refusal_can_name_this_engine_s_heaviest_artefact():
     """Without this the message suggests "a shorter formats list" and leaves the
     caller to work out which format is the bulk of a scan."""
-    assert response_size.BULKY_ARTIFACT == "middle.json"
+    assert response_size.BULKY_ARTIFACT == "middle_json.json"
 
 
 # -----------------------------------------------------------------------------
@@ -106,7 +106,7 @@ def test_the_refusal_says_how_to_get_the_output_anyway(oversized_result):
     """An error that only says "too large" leaves the caller guessing, so each
     of the three ways out is part of the contract."""
     error = oversized_result["error"]
-    assert "middle.json" in error          # drop the heaviest format
+    assert "middle_json.json" in error     # drop the heaviest format
     assert 'transport="s3"' in error       # a presigned URL instead of bytes
     assert "start_page" in error           # a bounded page range
     # And why it was refused here rather than delivered and dropped.

@@ -3,8 +3,8 @@
 Verifies the warmup module:
 - honors MINERU_SKIP_WARMUP
 - skips gracefully when the fixture is missing
-- calls run_mineru with the expected single-page / no-formula / no-table args
-- reads MINERU_WARMUP_BACKEND and MINERU_WARMUP_LANG from env
+- calls run_mineru with the expected single-page args and the reading defaults
+- reads MINERU_WARMUP_TIER and MINERU_WARMUP_OCR_MODE from env
 - never propagates exceptions (warmup failure must not block worker boot)
 """
 
@@ -24,7 +24,7 @@ from worker import warmup as warmup_module
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
     """Each test starts with a clean warmup env."""
-    for var in ("MINERU_SKIP_WARMUP", "MINERU_WARMUP_BACKEND", "MINERU_WARMUP_LANG"):
+    for var in ("MINERU_SKIP_WARMUP", "MINERU_WARMUP_TIER", "MINERU_WARMUP_OCR_MODE"):
         monkeypatch.delenv(var, raising=False)
     yield
 
@@ -83,13 +83,12 @@ def test_warmup_calls_run_mineru_with_warmup_shaped_args(monkeypatch, capsys, tm
     _seed_fixture(monkeypatch, tmp_path)
     captured: dict = {}
 
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         captured["file_bytes"] = file_bytes
-        captured["basename"] = basename
         captured.update(kwargs)
         out = work_dir / "fake-out"
         out.mkdir()
-        (out / f"{basename}.md").write_text("# warm\n", encoding="utf-8")
+        (out / "markdown.md").write_text("# warm\n", encoding="utf-8")
         return out
 
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
@@ -100,26 +99,24 @@ def test_warmup_calls_run_mineru_with_warmup_shaped_args(monkeypatch, capsys, tm
     assert "done in" in out
 
     assert captured["file_bytes"].startswith(b"%PDF")
-    assert captured["basename"] == "warmup"
     assert captured["start_page"] == 0
     assert captured["end_page"] == 0
-    assert captured["formula_enable"] is False
-    assert captured["table_enable"] is False
-    assert captured["server_url"] is None
-    assert captured["input_format"] == "pdf"
-    # Defaults applied because env not set:
-    assert captured["backend"] == "vlm-auto-engine"
-    assert captured["lang"] == "en"
+    # The page has no pictures, so analysing them would only slow the boot.
+    assert captured["image_analysis"] is False
+    # Defaults applied because env not set: the path a job takes unasked, so
+    # the first job finds that model loaded.
+    assert captured["tier"] == "advanced"
+    assert captured["ocr_mode"] == "ocr"
 
 
-def test_warmup_respects_env_backend_and_lang(monkeypatch, tmp_path):
+def test_warmup_respects_env_tier_and_ocr_mode(monkeypatch, tmp_path):
     _seed_fixture(monkeypatch, tmp_path)
-    monkeypatch.setenv("MINERU_WARMUP_BACKEND", "pipeline")
-    monkeypatch.setenv("MINERU_WARMUP_LANG", "east_slavic")
+    monkeypatch.setenv("MINERU_WARMUP_TIER", "standard")
+    monkeypatch.setenv("MINERU_WARMUP_OCR_MODE", "txt")
 
     captured: dict = {}
 
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         captured.update(kwargs)
         out = work_dir / "fake-out"
         out.mkdir()
@@ -128,8 +125,8 @@ def test_warmup_respects_env_backend_and_lang(monkeypatch, tmp_path):
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
     warmup_module.warmup()
 
-    assert captured["backend"] == "pipeline"
-    assert captured["lang"] == "east_slavic"
+    assert captured["tier"] == "standard"
+    assert captured["ocr_mode"] == "txt"
 
 
 # -----------------------------------------------------------------------------
@@ -156,7 +153,7 @@ def test_warmup_failure_is_nonfatal(monkeypatch, capsys, tmp_path):
 
 
 def test_warmup_failure_in_filesystem_io_is_nonfatal(monkeypatch, capsys, tmp_path):
-    """Even pre-aio_do_parse failures (e.g., unreadable fixture) must not propagate."""
+    """Even failures before the parse (e.g., unreadable fixture) must not propagate."""
     bad_fixture = tmp_path / "fixture.pdf"
     bad_fixture.write_bytes(b"")  # Empty file — read_bytes works, but parse fails later.
     monkeypatch.setattr(warmup_module, "WARMUP_FIXTURE_PATH", bad_fixture)
@@ -181,7 +178,7 @@ def test_warmup_logs_have_known_good_prefix(monkeypatch, capsys, tmp_path):
     """Output must use the [mineru-warmup] tag and plain text, not JSON."""
     _seed_fixture(monkeypatch, tmp_path)
 
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         out = work_dir / "fake-out"
         out.mkdir()
         return out

@@ -15,12 +15,13 @@ from worker import envelope
 
 
 def _seed_mineru_output(dir_: Path, basename: str) -> None:
-    (dir_ / f"{basename}.md").write_text("# heading\n\nbody\n", encoding="utf-8")
-    (dir_ / f"{basename}_content_list.json").write_text(
-        json.dumps([{"type": "text", "text": "body", "page_idx": 0}]),
-        encoding="utf-8",
+    """MinerU 4's saved files; `basename` is unused, MinerU names its own."""
+    (dir_ / "markdown.md").write_text("# heading\n\nbody\n", encoding="utf-8")
+    (dir_ / "markdown_full.md").write_text("# heading\n\nbody\n\n1\n", encoding="utf-8")
+    (dir_ / "structured_content.json").write_text(
+        json.dumps({"blocks": [{"type": "text", "text": "body"}]}), encoding="utf-8"
     )
-    (dir_ / f"{basename}_middle.json").write_text(json.dumps({"k": 1}), encoding="utf-8")
+    (dir_ / "middle_json.json").write_text(json.dumps({"k": 1}), encoding="utf-8")
     (dir_ / "images").mkdir()
     (dir_ / "images" / "fig1.png").write_bytes(b"\x89PNG fake")
 
@@ -34,9 +35,7 @@ def test_package_tarball_includes_all_artefacts(tmp_path):
     raw = base64.b64decode(encoded)
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
         names = set(tar.getnames())
-    assert "doc.md" in names
-    assert "doc_content_list.json" in names
-    assert "doc_middle.json" in names
+    assert {"markdown.md", "markdown_full.md", "structured_content.json", "middle_json.json"} <= names
     assert "images/fig1.png" in names or "images" in names
 
 
@@ -47,8 +46,10 @@ def test_package_inline_returns_full_payload(tmp_path):
 
     pkg = envelope._package_inline(out, "doc")
     assert pkg["markdown"].startswith("# heading")
-    assert pkg["content_list"][0]["text"] == "body"
-    assert pkg["middle"]["k"] == 1
+    assert pkg["markdown_full"].endswith("1\n")
+    assert pkg["structured_content"]["blocks"][0]["text"] == "body"
+    assert pkg["middle_json"]["k"] == 1
+    assert pkg["model_output"] == {}, "absent: MinerU wrote no raw model output"
     assert "fig1.png" in pkg["images"]
     assert base64.b64decode(pkg["images"]["fig1.png"]) == b"\x89PNG fake"
 
@@ -62,10 +63,14 @@ def test_validate_input_defaults_applied():
     cleaned = handler._validate_input({"file_b64": "AA=="})
     assert cleaned["start_page"] == 0
     assert cleaned["end_page"] == -1
-    assert cleaned["lang"] == "en"
-    assert cleaned["backend"] == "vlm-auto-engine"
+    assert cleaned["tier"] == "advanced"
+    assert cleaned["ocr_mode"] == "ocr"
+    assert cleaned["image_analysis"] is True
     assert cleaned["transport"] == "tarball_b64"
-    assert cleaned["formats"] == ["markdown", "content_list", "middle", "images"]
+    assert cleaned["formats"] == [
+        "markdown", "markdown_full", "middle_json", "structured_content",
+        "model_output", "images",
+    ]
     assert cleaned["basename"] == "doc"
 
 
@@ -157,8 +162,8 @@ def test_build_tarball_bytes_roundtrip(tmp_path):
     # Should be valid gzip-tar with the seeded files inside.
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
         names = set(tar.getnames())
-    assert "doc.md" in names
-    assert "doc_content_list.json" in names
+    assert "markdown.md" in names
+    assert "structured_content.json" in names
 
 
 def test_build_zip_bytes_roundtrip(tmp_path):
@@ -171,6 +176,6 @@ def test_build_zip_bytes_roundtrip(tmp_path):
     assert data[:4] == b"PK\x03\x04"  # zip magic
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         names = set(zf.namelist())
-    assert "doc.md" in names
-    assert "doc_content_list.json" in names
+    assert "markdown.md" in names
+    assert "structured_content.json" in names
     assert "images/fig1.png" in names

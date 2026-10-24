@@ -102,12 +102,13 @@ async def _handle_parse(
     # the -1 sentinel back to None so MinerU treats it as "until end of doc".
     end_page_val = cleaned["end_page"]
     end_page = None if end_page_val is None or end_page_val < 0 else int(end_page_val)
-    backend = cleaned["backend"]
+    tier = cleaned["tier"]
 
     _logging.info(
         "starting job",
-        backend=backend,
-        lang=cleaned["lang"],
+        tier=tier,
+        ocr_mode=cleaned["ocr_mode"],
+        image_analysis=cleaned["image_analysis"],
         start_page=cleaned["start_page"],
         end_page=end_page,
         gpu_name=gpu_info.get("name"),
@@ -132,14 +133,10 @@ async def _handle_parse(
     )
     _telemetry.histogram_record("input_size_bytes", float(len(file_bytes)))
 
+    # Only a label for telemetry. Whether MinerU reads the file is MinerU's call:
+    # the coarse check here knows PDF, images and ZIP containers, and nothing of
+    # an HTML, RTF or legacy Office file that MinerU 4 reads perfectly well.
     input_format = _io.detect_format(file_bytes)
-    if input_format == "unknown":
-        raise ValueError(
-            "input bytes do not match any supported format "
-            "(PDF, PNG/JPEG/GIF/BMP/TIFF/WebP image, or DOCX/PPTX/XLSX). "
-            "Check that file_b64 was base64-encoded correctly and that "
-            "file_url returned the file body (not an error page)."
-        )
 
     _note_shutdown("parse")
     await _maybe_progress(job, {
@@ -157,7 +154,8 @@ async def _handle_parse(
             "mineru.parse",
             phase="parse",
             **{
-                "mineru.backend": backend,
+                "mineru.tier": tier,
+                "mineru.ocr_mode": cleaned["ocr_mode"],
                 "mineru.input_format": input_format,
                 "mineru.start_page": cleaned["start_page"],
                 "mineru.end_page": end_page if end_page is not None else -1,
@@ -165,17 +163,12 @@ async def _handle_parse(
         ):
             output_dir = await _parse.run_mineru(
                 file_bytes,
-                basename=cleaned["basename"],
                 work_dir=work_dir,
-                input_format=input_format,
                 start_page=cleaned["start_page"],
                 end_page=end_page,
-                lang=cleaned["lang"],
-                backend=backend,
-                server_url=cleaned.get("server_url"),
-                formula_enable=cleaned["formula_enable"],
-                table_enable=cleaned["table_enable"],
-                effort=cleaned["effort"],
+                tier=tier,
+                ocr_mode=cleaned["ocr_mode"],
+                image_analysis=cleaned["image_analysis"],
             )
         parse_seconds = time.monotonic() - t
         phase_ms["mineru_parse"] = int(parse_seconds * 1000)
@@ -221,6 +214,12 @@ async def _handle_parse(
             "ok": True,
             "elapsed_seconds": round(time.monotonic() - started, 2),
             "mineru_version": _parse.MINERU_VERSION,
+            # How the document was read, as MinerU noted it in the result: the
+            # tier and OCR mode it used (never "auto"), and image analysis only
+            # where it acted. These are not the job's request echoed back.
+            **_parse.reported_settings(
+                output_dir, image_analysis=cleaned["image_analysis"]
+            ),
             "results": [entry],
         }
         package_seconds = time.monotonic() - t
@@ -242,7 +241,7 @@ async def _handle_parse(
             )
 
         response["debug"] = _build_debug(
-            phase_ms, gpu_info, backend=backend, input_format=input_format
+            phase_ms, gpu_info, tier=tier, input_format=input_format
         )
 
         # Cumulative refresh check — outside the lock so logging happens
@@ -268,17 +267,17 @@ async def _handle_parse(
         # `elapsed_seconds` is for the human-readable response only.
         job_seconds = time.monotonic() - started
         _telemetry.counter_add(
-            "jobs_total", status="ok", backend=backend, input_format=input_format,
+            "jobs_total", status="ok", tier=tier, input_format=input_format,
         )
         if bumped_pages > 0:
-            _telemetry.counter_add("pages_total", bumped_pages, backend=backend)
+            _telemetry.counter_add("pages_total", bumped_pages, tier=tier)
         _telemetry.histogram_record(
             "job_duration", job_seconds,
-            backend=backend, input_format=input_format,
+            tier=tier, input_format=input_format,
         )
         if bumped_pages > 0 and job_seconds > 0:
             _telemetry.histogram_record(
-                "pages_per_second", bumped_pages / job_seconds, backend=backend,
+                "pages_per_second", bumped_pages / job_seconds, tier=tier,
             )
 
         _logging.info(

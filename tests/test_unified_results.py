@@ -28,13 +28,19 @@ from worker.harness import MANIFEST
 # Fixture
 # -----------------------------------------------------------------------------
 
-def _seed_mineru_output(dir_: Path, basename: str) -> None:
-    (dir_ / f"{basename}.md").write_text("# heading\n\nbody\n", encoding="utf-8")
-    (dir_ / f"{basename}_content_list.json").write_text(
-        json.dumps([{"type": "text", "text": "body", "page_idx": 0}]),
-        encoding="utf-8",
+def _seed_mineru_output(dir_: Path, basename: str | None = None) -> None:
+    """The files MinerU 4's `ParseResult.save` writes, plus the full-mode markdown.
+
+    `basename` is accepted and unused: MinerU 4 names its files itself, so the
+    caller's basename no longer reaches the output directory.
+    """
+    (dir_ / "markdown.md").write_text("# heading\n\nbody\n", encoding="utf-8")
+    (dir_ / "markdown_full.md").write_text("# heading\n\nbody\n\n1\n", encoding="utf-8")
+    (dir_ / "middle_json.json").write_text(json.dumps({"k": 1}), encoding="utf-8")
+    (dir_ / "structured_content.json").write_text(
+        json.dumps({"blocks": [{"type": "text", "text": "body"}]}), encoding="utf-8"
     )
-    (dir_ / f"{basename}_middle.json").write_text(json.dumps({"k": 1}), encoding="utf-8")
+    (dir_ / "model_output.json").write_text(json.dumps({"raw": True}), encoding="utf-8")
     (dir_ / "images").mkdir()
     (dir_ / "images" / "fig1.png").write_bytes(b"\x89PNG fake")
 
@@ -64,11 +70,17 @@ def test_tarball_entry_carries_basename_source_pages_and_tarball(tmp_path):
     raw = base64.b64decode(entry["tarball_b64"])
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar:
         names = set(tar.getnames())
-    assert "doc.md" in names
-    assert "doc_content_list.json" in names
+    assert {
+        "markdown.md",
+        "markdown_full.md",
+        "middle_json.json",
+        "structured_content.json",
+        "model_output.json",
+        "images/fig1.png",
+    } <= names
     # No inline-format keys leak into a tarball entry.
     assert "markdown" not in entry
-    assert "content_list" not in entry
+    assert "structured_content" not in entry
 
 
 def test_tarball_entry_zip_archive_format(tmp_path):
@@ -90,8 +102,8 @@ def test_tarball_entry_zip_archive_format(tmp_path):
     assert raw[:4] == b"PK\x03\x04"  # zip local-file-header magic
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
         names = set(zf.namelist())
-    assert "doc.md" in names
-    assert "doc_content_list.json" in names
+    assert "markdown.md" in names
+    assert "markdown_full.md" in names
     assert "images/fig1.png" in names
 
 
@@ -101,7 +113,10 @@ def test_inline_entry_with_all_formats(tmp_path):
     _seed_mineru_output(out, "doc")
     entry = package.package_results_entry(
         transport="inline",
-        formats=["markdown", "content_list", "middle", "images"],
+        formats=[
+            "markdown", "markdown_full", "middle_json", "structured_content",
+            "model_output", "images",
+        ],
         output_dir=out,
         basename="doc",
         source="url:https://x/doc.pdf",
@@ -111,8 +126,10 @@ def test_inline_entry_with_all_formats(tmp_path):
     assert entry["basename"] == "doc"
     assert entry["source"] == "url:https://x/doc.pdf"
     assert entry["markdown"].startswith("# heading")
-    assert entry["content_list"][0]["text"] == "body"
-    assert entry["middle"] == {"k": 1}
+    assert entry["markdown_full"].endswith("1\n")
+    assert entry["structured_content"]["blocks"][0]["text"] == "body"
+    assert entry["middle_json"] == {"k": 1}
+    assert entry["model_output"] == {"raw": True}
     assert "fig1.png" in entry["images"]
     assert "tarball_b64" not in entry
     assert "tarball_url" not in entry
@@ -120,7 +137,7 @@ def test_inline_entry_with_all_formats(tmp_path):
 
 def test_inline_entry_with_markdown_only_omits_other_keys(tmp_path):
     """formats=['markdown'] produces ONLY the markdown key in the entry —
-    the other three are absent, not present-as-empty.
+    all the others are absent, not present-as-empty.
     """
     out = tmp_path / "out"
     out.mkdir()
@@ -135,9 +152,9 @@ def test_inline_entry_with_markdown_only_omits_other_keys(tmp_path):
         metadata={"pages_requested": 5},
     )
     assert "markdown" in entry
-    assert "content_list" not in entry
-    assert "middle" not in entry
-    assert "images" not in entry
+    for other in ("markdown_full", "middle_json", "structured_content", "model_output", "images"):
+        assert other not in entry
+    assert "markdown" in entry
 
 
 def test_inline_entry_with_two_formats(tmp_path):
@@ -146,7 +163,7 @@ def test_inline_entry_with_two_formats(tmp_path):
     _seed_mineru_output(out, "doc")
     entry = package.package_results_entry(
         transport="inline",
-        formats=["content_list", "images"],
+        formats=["structured_content", "images"],
         output_dir=out,
         basename="doc",
         source="b64",
@@ -154,15 +171,15 @@ def test_inline_entry_with_two_formats(tmp_path):
         metadata={"pages_requested": 5},
     )
     assert "markdown" not in entry
-    assert "middle" not in entry
-    assert "content_list" in entry
+    assert "middle_json" not in entry
+    assert "structured_content" in entry
     assert "images" in entry
 
 
 def test_inline_entry_without_images_dir(tmp_path):
     out = tmp_path / "out"
     out.mkdir()
-    (out / "doc.md").write_text("# md", encoding="utf-8")
+    (out / "markdown.md").write_text("# md", encoding="utf-8")
     # No images dir — `images` should be present-as-empty when requested.
     entry = package.package_results_entry(
         transport="inline",
@@ -192,10 +209,10 @@ def test_handler_failure_response_has_no_results_key():
 def test_handler_success_wraps_entry_in_results_list(monkeypatch):
     """Full handler path: a fake MinerU parse produces one entry in the results list."""
 
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):  # noqa: ARG001
+    async def fake_run(file_bytes, *, work_dir, **kwargs):  # noqa: ARG001
         out = work_dir / "fake-out"
         out.mkdir()
-        (out / f"{basename}.md").write_text("# fake\n", encoding="utf-8")
+        (out / "markdown.md").write_text("# fake\n", encoding="utf-8")
         return out
 
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
@@ -225,12 +242,12 @@ def test_handler_success_wraps_entry_in_results_list(monkeypatch):
 def test_handler_success_with_inline_filtered_formats(monkeypatch):
     """End-to-end: transport=inline + formats=['markdown'] returns ONLY markdown."""
 
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):  # noqa: ARG001
+    async def fake_run(file_bytes, *, work_dir, **kwargs):  # noqa: ARG001
         out = work_dir / "fake-out"
         out.mkdir()
-        (out / f"{basename}.md").write_text("# fake\n", encoding="utf-8")
-        (out / f"{basename}_content_list.json").write_text("[]", encoding="utf-8")
-        (out / f"{basename}_middle.json").write_text("{}", encoding="utf-8")
+        (out / "markdown.md").write_text("# fake\n", encoding="utf-8")
+        (out / "structured_content.json").write_text("{}", encoding="utf-8")
+        (out / "middle_json.json").write_text("{}", encoding="utf-8")
         return out
 
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
@@ -246,6 +263,99 @@ def test_handler_success_with_inline_filtered_formats(monkeypatch):
     assert result["ok"] is True
     entry = result["results"][0]
     assert entry["markdown"] == "# fake\n"
-    assert "content_list" not in entry
-    assert "middle" not in entry
+    assert "structured_content" not in entry
+    assert "middle_json" not in entry
     assert "images" not in entry
+
+
+# -----------------------------------------------------------------------------
+# What the response says about how the document was read
+# -----------------------------------------------------------------------------
+
+def _stub_run(monkeypatch, *, noted=None, record=None):
+    """A stand-in MinerU run; `noted` is what MinerU writes into the middle JSON."""
+
+    async def fake_run(file_bytes, *, work_dir, **kwargs):  # noqa: ARG001
+        if record is not None:
+            record.update(kwargs)
+        out = work_dir / "fake-out"
+        out.mkdir()
+        (out / "markdown.md").write_text("# fake\n", encoding="utf-8")
+        if noted is not None:
+            (out / "middle_json.json").write_text(
+                json.dumps({"extensions": {"mineru": noted}}), encoding="utf-8"
+            )
+        return out
+
+    monkeypatch.setattr("worker.parse.run_mineru", fake_run)
+
+
+def test_the_job_settings_reach_the_parse(monkeypatch):
+    seen = {}
+    _stub_run(monkeypatch, record=seen)
+    asyncio.run(handler.handler({
+        "input": {
+            "file_b64": "JVBERi0xLjQK",
+            "tier": "standard",
+            "ocr_mode": "txt",
+            "image_analysis": False,
+            "start_page": 2,
+            "end_page": 4,
+        }
+    }))
+    assert seen["tier"] == "standard"
+    assert seen["ocr_mode"] == "txt"
+    assert seen["image_analysis"] is False
+    assert (seen["start_page"], seen["end_page"]) == (2, 4)
+
+
+def test_without_settings_the_parse_gets_the_defaults(monkeypatch):
+    seen = {}
+    _stub_run(monkeypatch, record=seen)
+    asyncio.run(handler.handler({"input": {"file_b64": "JVBERi0xLjQK"}}))
+    assert (seen["tier"], seen["ocr_mode"], seen["image_analysis"]) == ("advanced", "ocr", True)
+    assert seen["end_page"] is None
+
+
+def test_the_response_names_the_settings_mineru_noted_not_the_ones_asked_for(monkeypatch):
+    _stub_run(monkeypatch, noted={"tier": "advanced", "parse_mode": "txt"})
+    result = asyncio.run(handler.handler({
+        "input": {"file_b64": "JVBERi0xLjQK", "tier": "advanced", "ocr_mode": "auto"}
+    }))
+    assert result["tier"] == "advanced"
+    assert result["ocr_mode"] == "txt"       # auto, resolved by MinerU
+    assert result["image_analysis"] is True  # asked for and acting in advanced
+
+
+def test_image_analysis_is_reported_off_outside_advanced(monkeypatch):
+    _stub_run(monkeypatch, noted={"tier": "standard", "parse_mode": "ocr"})
+    result = asyncio.run(handler.handler({
+        "input": {"file_b64": "JVBERi0xLjQK", "tier": "standard", "image_analysis": True}
+    }))
+    assert result["tier"] == "standard"
+    assert result["image_analysis"] is False
+
+
+def test_the_response_reports_the_installed_mineru_version(monkeypatch):
+    monkeypatch.setattr("worker.parse.MINERU_VERSION", "4.0.12")
+    _stub_run(monkeypatch, noted={"tier": "advanced", "parse_mode": "ocr"})
+    result = asyncio.run(handler.handler({"input": {"file_b64": "JVBERi0xLjQK"}}))
+    assert result["mineru_version"] == "4.0.12"
+
+
+def test_a_failed_job_reports_the_version_too(monkeypatch):
+    monkeypatch.setattr("worker.parse.MINERU_VERSION", "4.0.12")
+    result = asyncio.run(handler.handler({"input": {}}))
+    assert result["ok"] is False
+    assert result["mineru_version"] == "4.0.12"
+
+
+def test_bytes_the_coarse_check_does_not_know_are_left_to_mineru(monkeypatch):
+    """Only MinerU can say an HTML or RTF file is one it reads; the worker's own
+    magic-number check knows PDF, images and ZIP containers and nothing else."""
+    seen = {}
+    _stub_run(monkeypatch, record=seen)
+    html = base64.b64encode(b"<html><body>hi</body></html>").decode("ascii")
+    result = asyncio.run(handler.handler({"input": {"file_b64": html}}))
+    assert result["ok"] is True
+    assert seen["tier"] == "advanced"

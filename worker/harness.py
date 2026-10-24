@@ -59,37 +59,47 @@ config.configure(
         # which the boot warmup parses. MINERU_VOLUME_ROOTS still replaces
         # the whole list at runtime.
         volume_roots=DEFAULT_VOLUME_ROOTS + ("/worker",),
-        # Which weights actually loaded — Pro-2605 vs an older or unexpected
-        # variant — reported in every response's `debug.model_dir`.
+        # Reported in every response's `debug.model_dir` when the weights sit in
+        # the Hugging Face cache. MinerU 4 does not keep them there: `mineru-kit
+        # models download` writes into MinerU's own model directory
+        # ($MINERU_HOME/models), so this stays null until the harness can look
+        # somewhere else; `probe: true` shows the directory instead.
         model_globs=("models--opendatalab--MinerU*",),
-        # Resolved by the `probe: true` response to diagnose a cache that is
-        # present but not where MinerU's library looks: the VLM backend's
-        # model and the pipeline backend's.
+        # What the `probe: true` response tries to resolve in the Hugging Face
+        # cache: the small-model bundle and the VLM that tier `standard` bakes.
         probe_model_ids=(
+            "opendatalab/MinerU-4_models_torch",
             "opendatalab/MinerU2.5-Pro-2605-1.2B",
-            "opendatalab/PDF-Extract-Kit-1.0",
         ),
-        # Both are things an operator can get wrong in a way that looks like
-        # a missing model, so the probe reports them alongside the HF ones.
-        probe_env_keys=("MINERU_MODEL_SOURCE", "MINERU_VL_MODEL_NAME"),
+        # Things an operator can get wrong in a way that looks like a missing
+        # model, so the probe reports them alongside the HF ones.
+        probe_env_keys=(
+            "MINERU_HOME",
+            "MINERU_MODEL_SOURCE",
+            "MINERU_MODEL_SMALL_BACKEND",
+            "MINERU_MODEL_VLM_ENGINE",
+            "MINERU_VIRTUAL_VRAM_SIZE",
+        ),
         log_mirror=_telemetry_mirror,
     )
 )
 
 
-# What MinerU writes into the output directory, and what each file becomes in
+# What MinerU 4 writes into the output directory, and what each file becomes in
 # an inline response. Declaration order is the canonical output order: it is
 # what `formats` defaults to and what worker.schema validates against, so a
 # key added here reaches the input contract with it.
 #
-# content_list carries two patterns because MinerU renamed the file: the
-# current name first, the older one as a fallback, and the first that matches
-# wins. Its default is a list rather than the {} the kind would derive,
-# because callers index it.
+# MinerU 4 names its own files (`ParseResult.save`), so no pattern carries the
+# job's `basename`; it only labels the response entry now. `markdown_full.md` is
+# not MinerU's: the worker renders it from the saved middle JSON in full mode,
+# which keeps the headers, footers, page numbers, margin text and page footnotes
+# the default markdown leaves out. `model_output.json` exists only when MinerU
+# has raw model output to keep.
 #
 # markdown is required: it is what a caller asked for, and an empty string in
-# its place is worth less to them than a failed job they can retry. The other
-# three are worth shipping without — a corrupt content_list still leaves a
+# its place is worth less to them than a failed job they can retry. The others
+# are worth shipping without -- a corrupt structured_content still leaves a
 # usable document, and one unreadable image should not cost a caller the other
 # forty. Those degrade instead, and say so in the response.
 
@@ -100,18 +110,17 @@ config.configure(
 # version bump; on here, because the alternative is a silent failure.
 #
 # BULKY_ARTIFACT names the heaviest optional output so the refusal can suggest the
-# smallest `formats` change that would fit.
+# smallest `formats` change that would fit. For MinerU 4 that is the middle JSON
+# on the strength of what it holds (every block with its spans); which optional
+# file is heaviest on the heaviest scans is still to be measured.
 _response_size.ENFORCE_RESPONSE_CAP = True
-_response_size.BULKY_ARTIFACT = "middle.json"
+_response_size.BULKY_ARTIFACT = "middle_json.json"
 
 MANIFEST = (
-    Artifact("markdown", ("{basename}.md",), kind="text", required=True),
-    Artifact(
-        "content_list",
-        ("{basename}_content_list.json", "{basename}_content_list_v2.json"),
-        kind="json",
-        default=[],
-    ),
-    Artifact("middle", ("{basename}_middle.json",), kind="json"),
+    Artifact("markdown", ("markdown.md",), kind="text", required=True),
+    Artifact("markdown_full", ("markdown_full.md",), kind="text"),
+    Artifact("middle_json", ("middle_json.json",), kind="json"),
+    Artifact("structured_content", ("structured_content.json",), kind="json"),
+    Artifact("model_output", ("model_output.json",), kind="json"),
     Artifact("images", ("images/*",), kind="b64map"),
 )

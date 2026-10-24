@@ -2,90 +2,129 @@
 
 from __future__ import annotations
 
+import json
+from importlib import metadata
 from pathlib import Path
+from typing import Any
 
-# MinerU's heavy imports run lazily inside _run_mineru so the handler module
+# MinerU's heavy imports run lazily inside run_mineru so the handler module
 # itself imports on a CPU-only test machine (CI exercises input validation
 # and packaging without needing a GPU). Module-level only does a soft probe
 # so we can report MINERU_VERSION even if the dep failed to install.
+
+
+def installed_version() -> str:
+    """The version of the MinerU package that is installed, or "unknown".
+
+    Read from the installed distribution's metadata. It used to be read from
+    `mineru.__version__`, an attribute the package does not carry, so every
+    response said "unknown" whatever was running.
+    """
+    try:
+        return metadata.version("mineru")
+    except metadata.PackageNotFoundError:
+        return "unknown"
+
+
 try:
-    import mineru as _mineru
-    from mineru.cli.common import aio_do_parse  # noqa: F401  (smoke import)
-    MINERU_VERSION = getattr(_mineru, "__version__", "unknown")
+    from mineru.parser import parse_async  # noqa: F401  (smoke import)
+    MINERU_VERSION = installed_version()
     MINERU_AVAILABLE = True
 except Exception as e:  # pragma: no cover — handler returns the error to caller
-    _mineru = None  # type: ignore[assignment]
-    aio_do_parse = None  # type: ignore[assignment]
+    parse_async = None  # type: ignore[assignment]
     MINERU_VERSION = f"import-failed: {e}"
     MINERU_AVAILABLE = False
 
 
+def _page_range(start_page: int, end_page: int | None) -> str:
+    """The job's 0-based inclusive window as MinerU's 1-based `page_range`.
+
+    The whole document is no range at all: MinerU rejects any range for a file
+    that is not a PDF, so an unbounded job must not send one. "r1" is MinerU's
+    spelling of the last page.
+    """
+    if end_page is None:
+        return "" if start_page == 0 else f"{start_page + 1}-r1"
+    return f"{start_page + 1}-{end_page + 1}"
+
+
 async def run_mineru(
     file_bytes: bytes,
-    basename: str,
     work_dir: Path,
     *,
-    input_format: str,
     start_page: int,
     end_page: int | None,
-    lang: str,
-    backend: str,
-    server_url: str | None,
-    formula_enable: bool,
-    table_enable: bool,
-    effort: str | None = None,
+    tier: str,
+    ocr_mode: str,
+    image_analysis: bool,
 ) -> Path:
+    """Read one document with MinerU 4 and return the directory it saved into."""
     if not MINERU_AVAILABLE:
         raise RuntimeError(f"mineru is not importable: {MINERU_VERSION}")
     # Late re-import keeps the static import wrapped; the binding is the real one here.
-    from mineru.cli.common import aio_do_parse as _aio_do_parse  # type: ignore[import-not-found]
+    from mineru import filetypes  # type: ignore[import-not-found]  # noqa: PLC0415
+    from mineru.parser import parse_async as _parse_async  # type: ignore[import-not-found]  # noqa: PLC0415
+    from mineru.parser.base import ParseResult  # type: ignore[import-not-found]  # noqa: PLC0415
+    from mineru.parser.file_type import guess_suffix_by_bytes  # type: ignore[import-not-found]  # noqa: PLC0415
+    from mineru.parser.writer import FileBasedDataWriter  # type: ignore[import-not-found]  # noqa: PLC0415
+    from mineru.render.contracts import RenderMode  # type: ignore[import-not-found]  # noqa: PLC0415
 
-    # MinerU's `aio_do_parse` accepts PDFs, DOCX, PPTX, XLSX bytes directly via
-    # `pdf_bytes_list` (the name is legacy — it's polymorphic). Images need
-    # pre-conversion to single-page PDF first.
-    if input_format == "image":
-        from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes  # type: ignore[import-not-found]  # noqa: PLC0415
-        try:
-            file_bytes = images_bytes_to_pdf_bytes(file_bytes)
-        except Exception as e:  # noqa: BLE001
-            raise ValueError(f"image preprocessing failed: {type(e).__name__}: {e}") from e
+    # MinerU decides what a file is from its content, not from a name: a job
+    # carries only bytes, and a `basename` has no extension. The file is handed to
+    # MinerU under the suffix it detected, which is what MinerU routes on. Images
+    # go as the files they are -- MinerU turns them into pages itself.
+    suffix = guess_suffix_by_bytes(file_bytes)
+    if suffix not in filetypes.PARSEABLE_EXTENSIONS:
+        raise ValueError(
+            f"input is not a file type MinerU {MINERU_VERSION} reads "
+            f"(detected {suffix or 'nothing recognisable'!r}). It reads PDF, "
+            f"images, Office, OpenDocument, RTF, EPUB, OFD, HTML and CSV/TSV files."
+        )
+    source = work_dir / "input" / f"document.{suffix}"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(file_bytes)
 
-    # `effort` (hybrid backends only) is forwarded only when the caller set it,
-    # so MinerU's own default governs otherwise. Passing it unconditionally
-    # would override that default and would be meaningless on non-hybrid
-    # backends — the schema already rejects that combination upstream.
-    extra: dict[str, str] = {}
-    if effort is not None:
-        extra["effort"] = effort
-
-    # MinerU 3.1.x adds f_dump_model_output / f_dump_orig_pdf with default True
-    # — both write extra artefacts (raw model output JSON, copy of input PDF)
-    # that bloat the response tarball without serving callers we know about.
-    # Turn them off; callers who want them can fork the handler.
-    await _aio_do_parse(
-        output_dir=str(work_dir),
-        pdf_file_names=[basename],
-        pdf_bytes_list=[file_bytes],
-        p_lang_list=[lang],
-        backend=backend,
-        server_url=server_url,
-        parse_method="auto",
-        formula_enable=formula_enable,
-        table_enable=table_enable,
-        f_dump_md=True,
-        f_dump_content_list=True,
-        f_dump_middle_json=True,
-        f_dump_model_output=False,
-        f_dump_orig_pdf=False,
-        start_page_id=start_page,
-        end_page_id=end_page,
-        **extra,
+    result = await _parse_async(
+        source,
+        # Everything that is not a PDF or an image is read whole, without models,
+        # and MinerU asks for the tier to say so.
+        tier=filetypes.batch_effective_parse_tier(tier, suffix),
+        ocr_mode=ocr_mode,
+        image_analysis=image_analysis,
+        page_range=_page_range(start_page, end_page),
     )
 
-    # Only one basename is passed in, so at most one matching .md exists.
-    matches = list(work_dir.rglob(f"{basename}.md"))
-    if not matches:
-        raise RuntimeError(
-            f"MinerU did not produce {basename}.md anywhere under {work_dir}"
-        )
-    return matches[0].parent
+    output_dir = work_dir / "output"
+    result.save(FileBasedDataWriter(str(output_dir)))
+
+    # The default markdown leaves out headers, footers, page numbers, margin text
+    # and page footnotes; the full mode keeps them. Rendered from what was just
+    # saved, so its image links resolve to the files beside it.
+    saved = ParseResult.from_json((output_dir / "middle_json.json").read_text(encoding="utf-8"))
+    (output_dir / "markdown_full.md").write_text(
+        saved.markdown(mode=RenderMode.FULL), encoding="utf-8"
+    )
+    return output_dir
+
+
+def reported_settings(output_dir: Path, *, image_analysis: bool) -> dict[str, Any]:
+    """How the document was read, as MinerU noted it in the result.
+
+    MinerU records the tier and the OCR mode it actually used, not the ones that
+    were asked for: `auto` becomes `txt` or `ocr`, and a Office file asked for
+    `advanced` is noted as `flash`. Image analysis only acts in `advanced`, so the
+    reported value follows the reported tier. A result that carries no note leaves
+    all three unknown rather than guessing from the request.
+    """
+    unknown: dict[str, Any] = {"tier": None, "ocr_mode": None, "image_analysis": None}
+    try:
+        middle = json.loads((output_dir / "middle_json.json").read_text(encoding="utf-8"))
+        noted = middle["extensions"]["mineru"]
+        tier, ocr_mode = noted["tier"], noted["parse_mode"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return unknown
+    return {
+        "tier": tier,
+        "ocr_mode": ocr_mode,
+        "image_analysis": bool(image_analysis and tier == "advanced"),
+    }

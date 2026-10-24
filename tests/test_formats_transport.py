@@ -66,13 +66,27 @@ def test_formats_two_member_subset_accepted():
     assert cleaned["formats"] == ["markdown", "images"]
 
 
-def test_formats_all_four_accepted():
-    cleaned = validate_input({
-        "file_b64": "AA==",
-        "formats": ["images", "middle", "content_list", "markdown"],
-    })
+def test_formats_name_minerus_files_and_the_full_mode_markdown():
+    sent = [
+        "images", "model_output", "structured_content", "middle_json",
+        "markdown_full", "markdown",
+    ]
+    cleaned = validate_input({"file_b64": "AA==", "formats": sent})
     # Order is preserved as the caller sent it; canonical order is NOT forced.
-    assert cleaned["formats"] == ["images", "middle", "content_list", "markdown"]
+    assert cleaned["formats"] == sent
+
+
+@pytest.mark.parametrize("old", ["middle", "content_list"])
+def test_a_format_key_from_mineru_3_is_rejected(old):
+    with pytest.raises(ValueError, match="formats entry"):
+        validate_input({"file_b64": "AA==", "formats": ["markdown", old]})
+
+
+def test_formats_default_to_every_artifact_in_declaration_order():
+    assert validate_input({"file_b64": "AA=="})["formats"] == [
+        "markdown", "markdown_full", "middle_json", "structured_content",
+        "model_output", "images",
+    ]
 
 
 def test_formats_empty_list_rejected():
@@ -100,9 +114,9 @@ def test_formats_non_list_rejected():
 def test_formats_duplicates_collapsed_preserving_order():
     cleaned = validate_input({
         "file_b64": "AA==",
-        "formats": ["markdown", "images", "markdown", "images", "middle"],
+        "formats": ["markdown", "images", "markdown", "images", "middle_json"],
     })
-    assert cleaned["formats"] == ["markdown", "images", "middle"]
+    assert cleaned["formats"] == ["markdown", "images", "middle_json"]
 
 
 # -----------------------------------------------------------------------------

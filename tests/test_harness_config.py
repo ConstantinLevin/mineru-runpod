@@ -128,68 +128,53 @@ def test_manifest_keys_are_the_schema_formats():
 
 
 def test_manifest_covers_what_mineru_writes(tmp_path):
-    """The four files a parse produces resolve to the four response keys."""
-    (tmp_path / "doc.md").write_text("# heading\n", encoding="utf-8")
-    (tmp_path / "doc_content_list.json").write_text('[{"type": "text"}]', encoding="utf-8")
-    (tmp_path / "doc_middle.json").write_text('{"k": 1}', encoding="utf-8")
+    """The files MinerU 4 saves, and the full-mode markdown the worker adds,
+    resolve to their response keys."""
+    (tmp_path / "markdown.md").write_text("# heading\n", encoding="utf-8")
+    (tmp_path / "markdown_full.md").write_text("# heading\n\n1\n", encoding="utf-8")
+    (tmp_path / "middle_json.json").write_text('{"k": 1}', encoding="utf-8")
+    (tmp_path / "structured_content.json").write_text('{"blocks": []}', encoding="utf-8")
+    (tmp_path / "model_output.json").write_text('{"raw": true}', encoding="utf-8")
     (tmp_path / "images").mkdir()
-    (tmp_path / "images" / "fig1.png").write_bytes(b"\x89PNG fake")
+    (tmp_path / "images" / "page_0_image_1.png").write_bytes(b"\x89PNG fake")
 
     out = artifacts.resolve(MANIFEST, tmp_path, "doc")
     assert out["markdown"] == "# heading\n"
-    assert out["content_list"] == [{"type": "text"}]
-    assert out["middle"] == {"k": 1}
-    assert "fig1.png" in out["images"]
+    assert out["markdown_full"] == "# heading\n\n1\n"
+    assert out["middle_json"] == {"k": 1}
+    assert out["structured_content"] == {"blocks": []}
+    assert out["model_output"] == {"raw": True}
+    assert "page_0_image_1.png" in out["images"]
 
 
-def test_content_list_falls_back_to_the_versioned_name(tmp_path):
-    """MinerU renamed this file; a build writing only the newer name still
-    fills the same response key."""
-    (tmp_path / "doc_content_list_v2.json").write_text('[{"type": "text"}]', encoding="utf-8")
-    out = artifacts.resolve(MANIFEST, tmp_path, "doc", keys=["content_list"])
-    assert out["content_list"] == [{"type": "text"}]
-
-
-def test_the_current_content_list_name_wins(tmp_path):
-    """With both present, the unversioned name is the one read — the patterns
-    are ordered fallbacks, not alternatives."""
-    (tmp_path / "doc_content_list.json").write_text('["current"]', encoding="utf-8")
-    (tmp_path / "doc_content_list_v2.json").write_text('["older"]', encoding="utf-8")
-    out = artifacts.resolve(MANIFEST, tmp_path, "doc", keys=["content_list"])
-    assert out["content_list"] == ["current"]
+def test_the_basename_does_not_name_any_file(tmp_path):
+    """MinerU 4 names its own files, so a document called anything resolves to
+    the same ones."""
+    (tmp_path / "markdown.md").write_text("# heading\n", encoding="utf-8")
+    assert artifacts.resolve(MANIFEST, tmp_path, "whatever")["markdown"] == "# heading\n"
 
 
 def test_absent_optional_artifacts_keep_their_declared_defaults(tmp_path):
-    """A document with no tables must come back as an empty value of the right
-    type, not a missing key a caller would KeyError on."""
+    """A document with no raw model output must come back as an empty value of
+    the right type, not a missing key a caller would KeyError on."""
     out = artifacts.resolve(
-        MANIFEST, tmp_path, "doc", keys=["content_list", "middle", "images"]
+        MANIFEST,
+        tmp_path,
+        "doc",
+        keys=["markdown_full", "middle_json", "structured_content", "model_output", "images"],
     )
-    assert out["content_list"] == []
-    assert out["middle"] == {}
+    assert out["markdown_full"] == ""
+    assert out["middle_json"] == {}
+    assert out["structured_content"] == {}
+    assert out["model_output"] == {}
     assert out["images"] == {}
 
 
 def test_an_absent_markdown_has_no_default_to_fall_back_on(tmp_path):
     """Being required is exactly this: there is no value that would stand in
-    for the document's text. worker.parse refuses first — it looks for the .md
-    before packaging is reached — so this is the second of two checks, not the
-    only one."""
+    for the document's text."""
     with pytest.raises(artifacts.ArtifactError, match="markdown"):
         artifacts.resolve(MANIFEST, tmp_path, "doc", keys=["markdown"])
-
-
-def test_the_longest_artefact_suffix_is_the_longest_one_declared():
-    """schema bounds `basename` by the longest name a job can write, so the
-    two have to agree: a longer pattern added to the manifest would let a
-    name through that fails at ENAMETOOLONG mid-parse."""
-    suffixes = [
-        pattern.format(basename="")
-        for artifact in MANIFEST
-        for pattern in artifact.patterns
-        if "*" not in pattern
-    ]
-    assert schema.LONGEST_ARTEFACT_SUFFIX == max(suffixes, key=len)
 
 
 # -----------------------------------------------------------------------------
@@ -199,7 +184,7 @@ def test_the_longest_artefact_suffix_is_the_longest_one_declared():
 def test_markdown_is_the_one_required_artifact():
     """The document's text is what a caller asked for; an empty string in its
     place is worth less to them than a failed job they can retry. The other
-    three are worth shipping without, so they degrade and say so."""
+    others are worth shipping without, so they degrade and say so."""
     required = {a.key for a in MANIFEST if a.required}
     assert required == {"markdown"}
 
@@ -207,12 +192,12 @@ def test_markdown_is_the_one_required_artifact():
 def test_an_unreadable_markdown_fails_the_job(monkeypatch, capsys):
     """End-to-end: the response says ok=false rather than carrying an empty
     string that reads like a document with no text on it."""
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         out = work_dir / "out"
         out.mkdir()
         # Written, then unreadable — a disk that filled mid-write, or bytes
         # that are not the UTF-8 the artifact is declared as.
-        (out / f"{basename}.md").write_bytes(b"\xff\xfe\x00bad")
+        (out / "markdown.md").write_bytes(b"\xff\xfe\x00bad")
         return out
 
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
@@ -227,14 +212,14 @@ def test_an_unreadable_markdown_fails_the_job(monkeypatch, capsys):
 
 
 def test_an_unreadable_secondary_artifact_still_returns_a_response(monkeypatch, capsys):
-    """A corrupt content_list leaves a usable document, so the job succeeds —
+    """A corrupt structured_content leaves a usable document, so the job succeeds —
     and the response says which artifact it lost, so a caller can requeue that
     document instead of finding out downstream."""
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         out = work_dir / "out"
         out.mkdir()
-        (out / f"{basename}.md").write_text("# real text\n", encoding="utf-8")
-        (out / f"{basename}_content_list.json").write_bytes(b"{truncated")
+        (out / "markdown.md").write_text("# real text\n", encoding="utf-8")
+        (out / "structured_content.json").write_bytes(b"{truncated")
         return out
 
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
@@ -251,20 +236,20 @@ def test_an_unreadable_secondary_artifact_still_returns_a_response(monkeypatch, 
     assert result["ok"] is True
     entry = result["results"][0]
     assert entry["markdown"] == "# real text\n"
-    assert entry["content_list"] == []
+    assert entry["structured_content"] == {}
     assert entry["degraded"]["count"] == 1
     (item,) = entry["degraded"]["items"]
-    assert item["artifact"] == "content_list"
+    assert item["artifact"] == "structured_content"
     assert item["reason"] == "unreadable"
 
 
 def test_an_intact_job_carries_no_degraded_key(monkeypatch, capsys):
     """The field appears only when something was lost, so a caller can treat
     its presence as the signal."""
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         out = work_dir / "out"
         out.mkdir()
-        (out / f"{basename}.md").write_text("# fine\n", encoding="utf-8")
+        (out / "markdown.md").write_text("# fine\n", encoding="utf-8")
         return out
 
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
@@ -301,11 +286,11 @@ def test_a_lost_artifact_is_counted(monkeypatch, capsys):
     counter is for whoever is watching a fleet and will never read it."""
     calls = _degradation_counts(monkeypatch)
 
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         out = work_dir / "out"
         out.mkdir()
-        (out / f"{basename}.md").write_text("# real text\n", encoding="utf-8")
-        (out / f"{basename}_content_list.json").write_bytes(b"{truncated")
+        (out / "markdown.md").write_text("# real text\n", encoding="utf-8")
+        (out / "structured_content.json").write_bytes(b"{truncated")
         return out
 
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
@@ -315,16 +300,16 @@ def test_a_lost_artifact_is_counted(monkeypatch, capsys):
     }))
     capsys.readouterr()
 
-    assert calls == [(1, {"reason": "unreadable", "artifact": "content_list"})]
+    assert calls == [(1, {"reason": "unreadable", "artifact": "structured_content"})]
 
 
 def test_an_intact_job_counts_nothing(monkeypatch, capsys):
     calls = _degradation_counts(monkeypatch)
 
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         out = work_dir / "out"
         out.mkdir()
-        (out / f"{basename}.md").write_text("# fine\n", encoding="utf-8")
+        (out / "markdown.md").write_text("# fine\n", encoding="utf-8")
         return out
 
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)

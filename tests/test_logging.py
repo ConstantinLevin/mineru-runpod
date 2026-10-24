@@ -17,10 +17,10 @@ import handler
 
 
 def _stub_run_mineru(monkeypatch):
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         out = work_dir / "out"
         out.mkdir()
-        (out / f"{basename}.md").write_text("# fake\n", encoding="utf-8")
+        (out / "markdown.md").write_text("# fake\n", encoding="utf-8")
         return out
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
 

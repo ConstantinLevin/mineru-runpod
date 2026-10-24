@@ -128,16 +128,6 @@ def test_handler_failure_response_reports_compacted_text(monkeypatch):
     assert "https://files.example.com/doc.pdf" in result["error"]
 
 
-def test_validate_input_rejects_unknown_backend():
-    with pytest.raises(ValueError, match="backend must be one of"):
-        handler._validate_input({"file_b64": "AA==", "backend": "magic-engine"})
-
-
-def test_validate_input_http_client_requires_server_url():
-    with pytest.raises(ValueError, match="server_url"):
-        handler._validate_input({"file_b64": "AA==", "backend": "vlm-http-client"})
-
-
 def test_validate_input_rejects_overlong_basename():
     with pytest.raises(ValueError, match="basename must be at most"):
         handler._validate_input({"file_b64": "AA==", "basename": "d" * 129})
@@ -148,53 +138,10 @@ def test_validate_input_accepts_basename_at_the_limit():
     assert cleaned["basename"] == "d" * 128
 
 
-# The charset rule accepts unicode alphanumerics, and a filesystem bounds a name
-# in bytes — so the character limit alone does not keep the generated filenames
-# legal. 78 CJK characters plus the longest suffix is exactly 255 bytes.
-def test_validate_input_accepts_a_multibyte_basename_that_fits():
-    basename = "文" * 78
-    cleaned = handler._validate_input({"file_b64": "AA==", "basename": basename})
-    assert cleaned["basename"] == basename
-    from worker import schema
-
-    assert len(
-        f"{basename}{schema.LONGEST_ARTEFACT_SUFFIX}".encode()
-    ) == schema.MAX_OUTPUT_NAME_BYTES
-
-
-def test_validate_input_rejects_a_multibyte_basename_that_overruns_the_name():
-    with pytest.raises(ValueError, match="too long for the filenames it produces"):
-        handler._validate_input({"file_b64": "AA==", "basename": "文" * 79})
-
-
-def test_validate_input_rejects_the_reported_cjk_basename():
-    # 80 CJK characters pass the 128-character rule and produce 261 bytes.
-    with pytest.raises(ValueError, match="261 bytes"):
-        handler._validate_input({"file_b64": "AA==", "basename": "文" * 80})
-
-
 def test_validate_input_backfills_an_empty_basename():
     cleaned = handler._validate_input({"file_b64": "AA==", "basename": ""})
     assert cleaned["basename"] == "doc"
 
-
-@pytest.mark.parametrize("lang", ["en", "ch", "east_slavic", "zh-Hans"])
-def test_validate_input_accepts_real_lang_codes(lang):
-    assert handler._validate_input({"file_b64": "AA==", "lang": lang})["lang"] == lang
-
-
-@pytest.mark.parametrize(
-    "lang",
-    [
-        "en us", "../en", "e" * 33, "en/ch",
-        # A `$` anchor also matches just before a final newline, so these have
-        # to be rejected by the anchoring rather than by the character class.
-        "en\n", "east_slavic\n", "en\r\n", "en\n\n",
-    ],
-)
-def test_validate_input_rejects_malformed_lang(lang):
-    with pytest.raises(ValueError, match="lang must be a short"):
-        handler._validate_input({"file_b64": "AA==", "lang": lang})
 
 
 def test_validate_input_rejects_end_page_before_start_page():
@@ -264,193 +211,6 @@ def test_validate_input_rejects_non_http_file_url():
         handler._validate_input({"file_url": "file:///etc/hosts"})
 
 
-def test_validate_input_rejects_non_http_server_url():
-    with pytest.raises(ValueError, match="server_url must be an http"):
-        handler._validate_input({
-            "file_b64": "AA==",
-            "backend": "vlm-http-client",
-            "server_url": "vllm.internal:8000",
-        })
-
-
-def test_a_private_server_url_is_accepted_by_default():
-    """Compatibility is the default, and that is a decision rather than an
-    oversight.
-
-    Applying the outbound-target policy here was tried and reverted. Every
-    existing `*-http-client` deployment whose model server is on a private
-    address — the ordinary way to run one — would have started failing jobs that
-    had always succeeded, and this repo publishes from the commit title, so the
-    change would have arrived as a patch release discovered through broken jobs.
-
-    The exposure is real and documented: `server_url` is a job input, so any
-    caller can aim the worker at an internal address. Operators whose endpoint is
-    reachable by untrusted callers set MINERU_ENFORCE_TARGET_POLICY.
-    """
-    cleaned = handler._validate_input({
-        "file_b64": "AA==",
-        "backend": "vlm-http-client",
-        "server_url": "http://10.1.2.3:8000",
-    })
-    assert cleaned["server_url"] == "http://10.1.2.3:8000"
-
-
-def test_the_shape_check_still_applies_by_default():
-    """Off does not mean unvalidated: a scheme-less or hostless value is still
-    refused, because it is malformed rather than merely private."""
-    with pytest.raises(ValueError, match="server_url"):
-        handler._validate_input({
-            "file_b64": "AA==",
-            "backend": "vlm-http-client",
-            "server_url": "vllm.internal:8000",
-        })
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        "http://127.0.0.1:8000",
-        "http://169.254.169.254/latest/meta-data",
-        "http://192.168.1.10:8000",
-        "http://10.1.2.3:8000",
-    ],
-)
-def test_the_policy_refuses_private_server_urls_when_enabled(url, monkeypatch):
-    """With the flag set, `server_url` gets exactly the policy `file_url` has.
-    The metadata endpoint is in the list deliberately — it is the target that
-    turns this from a misconfiguration into an SSRF."""
-    monkeypatch.setenv("MINERU_ENFORCE_TARGET_POLICY", "1")
-    with pytest.raises(ValueError, match="MINERU_ALLOWED_SERVER_HOSTS"):
-        handler._validate_input({
-            "file_b64": "AA==",
-            "backend": "vlm-http-client",
-            "server_url": url,
-        })
-
-
-def test_an_allowlisted_private_host_is_permitted(monkeypatch):
-    """How an operator with a private model server enforces the policy.
-
-    The earlier version of this test used MINERU_ALLOW_LOCAL_FETCH, and that was
-    wrong in a way worth recording: the flag lifts the address policy for *every*
-    field and every target, so it re-admitted arbitrary private `server_url`
-    values from any caller and disabled the same protection on `file_url`. The
-    "recipe" the docs gave was strictly worse than not enforcing the policy at
-    all.
-    """
-    monkeypatch.setenv("MINERU_ENFORCE_TARGET_POLICY", "1")
-    monkeypatch.setenv("MINERU_ALLOWED_SERVER_HOSTS", "10.1.2.3")
-    cleaned = handler._validate_input({
-        "file_b64": "AA==",
-        "backend": "vlm-http-client",
-        "server_url": "http://10.1.2.3:8000",
-    })
-    assert cleaned["server_url"] == "http://10.1.2.3:8000"
-
-
-@pytest.mark.parametrize(
-    "url",
-    [
-        "http://127.0.0.1:8000",
-        "http://169.254.169.254/latest/meta-data",
-        "http://192.168.1.10:8000",
-    ],
-)
-def test_the_allowlist_permits_only_what_it_names(url, monkeypatch):
-    """The point of an allowlist over a global flag: everything else stays
-    refused, the metadata endpoint included."""
-    monkeypatch.setenv("MINERU_ENFORCE_TARGET_POLICY", "1")
-    monkeypatch.setenv("MINERU_ALLOWED_SERVER_HOSTS", "10.1.2.3")
-    with pytest.raises(ValueError, match="MINERU_ALLOWED_SERVER_HOSTS"):
-        handler._validate_input({
-            "file_b64": "AA==",
-            "backend": "vlm-http-client",
-            "server_url": url,
-        })
-
-
-def test_the_allowlist_does_not_match_by_suffix(monkeypatch):
-    """`evil-vllm.internal` must not satisfy an entry of `vllm.internal`."""
-    monkeypatch.setenv("MINERU_ENFORCE_TARGET_POLICY", "1")
-    monkeypatch.setenv("MINERU_ALLOWED_SERVER_HOSTS", "vllm.internal")
-    with pytest.raises(ValueError):
-        handler._validate_input({
-            "file_b64": "AA==",
-            "backend": "vlm-http-client",
-            "server_url": "http://evil-vllm.internal:8000",
-        })
-
-
-def test_the_allowlist_is_case_insensitive_and_tolerates_spacing(monkeypatch):
-    monkeypatch.setenv("MINERU_ENFORCE_TARGET_POLICY", "1")
-    monkeypatch.setenv("MINERU_ALLOWED_SERVER_HOSTS", " VLLM.Internal , other.host ")
-    monkeypatch.setattr(
-        "worker.schema._net.require_http_url",
-        lambda url, *, field: "vllm.internal",
-    )
-    cleaned = handler._validate_input({
-        "file_b64": "AA==",
-        "backend": "vlm-http-client",
-        "server_url": "http://vllm.internal:8000",
-    })
-    assert cleaned["server_url"] == "http://vllm.internal:8000"
-
-
-def test_a_public_server_url_needs_listing_once_the_policy_is_on(monkeypatch):
-    """The contract change that closed DNS rebinding on this field.
-
-    A public address used to pass under enforcement on the strength of where it
-    resolved. That check is precisely what rebinding defeats: the engine resolves
-    the host again and opens the connection itself, so an answer that is public
-    here can be private there. Enforcement therefore requires the operator to name
-    the host, and a name they chose cannot be rebound by a caller.
-
-    Without the policy the field keeps its shape check only, which is the
-    documented default and is what most endpoints run.
-    """
-    url = "https://8.8.8.8/v1"
-    payload = {
-        "file_b64": "AA==",
-        "backend": "vlm-http-client",
-        "server_url": url,
-    }
-
-    monkeypatch.delenv("MINERU_ENFORCE_TARGET_POLICY", raising=False)
-    assert handler._validate_input(dict(payload))["server_url"] == url
-
-    monkeypatch.setenv("MINERU_ENFORCE_TARGET_POLICY", "1")
-    monkeypatch.delenv("MINERU_ALLOWED_SERVER_HOSTS", raising=False)
-    with pytest.raises(ValueError, match="MINERU_ALLOWED_SERVER_HOSTS"):
-        handler._validate_input(dict(payload))
-
-    monkeypatch.setenv("MINERU_ALLOWED_SERVER_HOSTS", "8.8.8.8")
-    assert handler._validate_input(dict(payload))["server_url"] == url
-
-def test_validate_input_defaults_effort_to_none():
-    cleaned = handler._validate_input({"file_b64": "AA=="})
-    assert cleaned["effort"] is None
-
-
-def test_validate_input_accepts_effort_with_hybrid_backend():
-    cleaned = handler._validate_input(
-        {"file_b64": "AA==", "backend": "hybrid-auto-engine", "effort": "high"}
-    )
-    assert cleaned["effort"] == "high"
-
-
-def test_validate_input_rejects_invalid_effort_value():
-    with pytest.raises(ValueError, match="effort must be one of"):
-        handler._validate_input(
-            {"file_b64": "AA==", "backend": "hybrid-auto-engine", "effort": "turbo"}
-        )
-
-
-def test_validate_input_rejects_effort_on_non_hybrid_backend():
-    with pytest.raises(ValueError, match="effort is only valid with a hybrid"):
-        handler._validate_input(
-            {"file_b64": "AA==", "backend": "vlm-auto-engine", "effort": "high"}
-        )
-
 
 @pytest.mark.parametrize(
     ("env_value", "expected"),
@@ -471,3 +231,90 @@ def test_presign_ttl_resolution(monkeypatch, env_value, expected):
     else:
         monkeypatch.setenv("BUCKET_PRESIGN_TTL_SECONDS", env_value)
     assert worker_package.presign_ttl_seconds() == expected
+
+
+# -----------------------------------------------------------------------------
+# Job contract: how the document is read (MinerU 4)
+# -----------------------------------------------------------------------------
+
+
+def test_the_reading_defaults_are_advanced_forced_ocr_and_image_analysis():
+    cleaned = handler._validate_input({"file_b64": "AA=="})
+    assert cleaned["tier"] == "advanced"
+    assert cleaned["ocr_mode"] == "ocr"
+    assert cleaned["image_analysis"] is True
+
+
+@pytest.mark.parametrize("tier", ["flash", "basic", "standard", "advanced"])
+def test_every_tier_is_accepted(tier):
+    assert handler._validate_input({"file_b64": "AA==", "tier": tier})["tier"] == tier
+
+
+@pytest.mark.parametrize("ocr_mode", ["auto", "txt", "ocr"])
+def test_every_ocr_mode_is_accepted(ocr_mode):
+    cleaned = handler._validate_input({"file_b64": "AA==", "ocr_mode": ocr_mode})
+    assert cleaned["ocr_mode"] == ocr_mode
+
+
+def test_an_unknown_tier_is_rejected_with_the_valid_ones():
+    with pytest.raises(ValueError, match="tier must be one of") as caught:
+        handler._validate_input({"file_b64": "AA==", "tier": "ultra"})
+    assert "advanced" in str(caught.value)
+
+
+def test_an_unknown_ocr_mode_is_rejected_with_the_valid_ones():
+    with pytest.raises(ValueError, match="ocr_mode must be one of") as caught:
+        handler._validate_input({"file_b64": "AA==", "ocr_mode": "vlm"})
+    assert "auto" in str(caught.value)
+
+
+def test_image_analysis_can_be_switched_off():
+    cleaned = handler._validate_input({"file_b64": "AA==", "image_analysis": False})
+    assert cleaned["image_analysis"] is False
+
+
+# A job that still sends a MinerU 3.4 field is turned away rather than silently
+# read with something else: the caller believed they chose how it is read.
+@pytest.mark.parametrize(
+    ("field", "value", "replacement"),
+    [
+        ("backend", "vlm-auto-engine", "tier"),
+        ("backend", "pipeline", "ocr_mode"),
+        ("effort", "high", "image_analysis"),
+        ("lang", "ch", "no replacement"),
+        ("formula_enable", False, "no replacement"),
+        ("table_enable", False, "no replacement"),
+        ("server_url", "http://10.1.2.3:8000", "no replacement"),
+    ],
+)
+def test_a_removed_field_is_rejected_and_names_what_replaces_it(field, value, replacement):
+    with pytest.raises(ValueError, match=f"{field} was removed") as caught:
+        handler._validate_input({"file_b64": "AA==", field: value})
+    assert replacement in str(caught.value)
+
+
+def test_every_removed_field_is_named_at_once():
+    with pytest.raises(ValueError) as caught:
+        handler._validate_input(
+            {"file_b64": "AA==", "backend": "pipeline", "lang": "en", "table_enable": True}
+        )
+    message = str(caught.value)
+    assert "backend was removed" in message
+    assert "lang was removed" in message
+    assert "table_enable was removed" in message
+
+
+def test_the_handler_reports_a_removed_field_as_a_failed_job():
+    result = asyncio.run(
+        handler.handler({"input": {"file_b64": "JVBERi0xLjQK", "backend": "pipeline"}})
+    )
+    assert result["ok"] is False
+    assert "backend was removed" in result["error"]
+
+
+@pytest.mark.parametrize("field", ["tier", "ocr_mode"])
+def test_an_empty_reading_setting_is_rejected_not_defaulted(field):
+    """Defaults are for a field that is absent. An empty string is a caller
+    mistake that would otherwise be read with a setting they never named."""
+    with pytest.raises(ValueError, match=f"{field} must be one of"):
+        handler._validate_input({"file_b64": "AA==", field: ""})

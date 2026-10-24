@@ -68,8 +68,8 @@ def _truthy(value: str) -> bool:
 async def warmup_async() -> None:
     """Run one throwaway parse at boot to load model + compile kernels.
 
-    Reads ``MINERU_SKIP_WARMUP`` / ``MINERU_WARMUP_BACKEND`` /
-    ``MINERU_WARMUP_LANG`` from the environment. Never raises — the
+    Reads ``MINERU_SKIP_WARMUP`` / ``MINERU_WARMUP_TIER`` /
+    ``MINERU_WARMUP_OCR_MODE`` from the environment. Never raises — the
     caller proceeds to serve requests whether this succeeds or not.
 
     **Must be called from an already-running asyncio loop** that will
@@ -86,24 +86,26 @@ async def warmup_async() -> None:
         _log(f"fixture not found at {WARMUP_FIXTURE_PATH}, skipping warmup")
         return
 
-    backend = os.environ.get("MINERU_WARMUP_BACKEND", "vlm-auto-engine")
-    lang = os.environ.get("MINERU_WARMUP_LANG", "en")
-    _log(f"starting (backend={backend} lang={lang} fixture={WARMUP_FIXTURE_PATH})")
+    # The defaults are the job defaults (worker.schema), so a worker that is
+    # never told otherwise warms the path its first job will take.
+    tier = os.environ.get("MINERU_WARMUP_TIER", "advanced")
+    ocr_mode = os.environ.get("MINERU_WARMUP_OCR_MODE", "ocr")
+    _log(f"starting (tier={tier} ocr_mode={ocr_mode} fixture={WARMUP_FIXTURE_PATH})")
     start = time.monotonic()
 
     # Local import to keep this module light when telemetry isn't wired up
     # (e.g. some test contexts that import warmup standalone).
     from worker import telemetry as _telemetry  # noqa: PLC0415
 
-    with _telemetry.span("mineru.warmup", **{"mineru.backend": backend, "mineru.lang": lang}):
+    with _telemetry.span("mineru.warmup", **{"mineru.tier": tier, "mineru.ocr_mode": ocr_mode}):
         try:
             fixture_bytes = WARMUP_FIXTURE_PATH.read_bytes()
-            await _warmup_once(fixture_bytes, backend=backend, lang=lang)
+            await _warmup_once(fixture_bytes, tier=tier, ocr_mode=ocr_mode)
         except Exception as exc:  # noqa: BLE001
             elapsed = time.monotonic() - start
             _telemetry.record_exception(exc)
             _telemetry.histogram_record(
-                "warmup_duration", elapsed, backend=backend, status="error",
+                "warmup_duration", elapsed, tier=tier, status="error",
             )
             _log(f"failed after {elapsed:.1f}s: {type(exc).__name__}: {exc}")
             _log("worker will continue with lazy-load fallback")
@@ -111,7 +113,7 @@ async def warmup_async() -> None:
 
         elapsed = time.monotonic() - start
         _telemetry.histogram_record(
-            "warmup_duration", elapsed, backend=backend, status="ok",
+            "warmup_duration", elapsed, tier=tier, status="ok",
         )
         _log(f"done in {elapsed:.1f}s")
 
@@ -128,7 +130,7 @@ def warmup() -> None:
     asyncio.run(warmup_async())
 
 
-async def _warmup_once(file_bytes: bytes, *, backend: str, lang: str) -> None:
+async def _warmup_once(file_bytes: bytes, *, tier: str, ocr_mode: str) -> None:
     """Drive a single-page parse against a throwaway tempdir.
 
     Imports `worker.parse` lazily so this module stays importable from
@@ -140,14 +142,12 @@ async def _warmup_once(file_bytes: bytes, *, backend: str, lang: str) -> None:
         work_dir = Path(tmp)
         await _parse.run_mineru(
             file_bytes,
-            basename="warmup",
             work_dir=work_dir,
-            input_format="pdf",
             start_page=0,
             end_page=0,
-            lang=lang,
-            backend=backend,
-            server_url=None,
-            formula_enable=False,
-            table_enable=False,
+            tier=tier,
+            ocr_mode=ocr_mode,
+            # One word on the page and nothing to look at: analysing images would
+            # only lengthen the boot.
+            image_analysis=False,
         )

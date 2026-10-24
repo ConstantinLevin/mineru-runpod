@@ -3,31 +3,15 @@
 from __future__ import annotations
 
 import os
-import re
 from typing import Any
 
 from runpod.serverless.utils.rp_validator import validate
 
-from runpod_doc_worker import config as _config
 from runpod_doc_worker.contract import artifacts as _artifacts
 from runpod_doc_worker.transport import net as _net
 from runpod_doc_worker.transport import package as _package
 
 from worker.harness import MANIFEST
-
-# Suffix of the operator flag that turns the outbound-target policy on for the
-# per-job `server_url`. Off by default: see the reasoning at the call site.
-ENFORCE_TARGET_POLICY = "ENFORCE_TARGET_POLICY"
-
-# Hosts `server_url` may name even when they resolve somewhere private. This
-# exists because the obvious alternative is wrong: MINERU_ALLOW_LOCAL_FETCH lifts
-# the address policy for *every* field and every target, so an operator who set
-# it to reach their own private model server would simultaneously re-admit
-# arbitrary private `server_url` values from any caller and switch off the same
-# protection on `file_url`. An allowlist says the one thing the operator actually
-# means — "my model server lives at this name" — and says nothing else.
-ALLOWED_SERVER_HOSTS = "ALLOWED_SERVER_HOSTS"
-
 
 # Both come from where the behaviour is rather than being restated here: a
 # transport this worker accepts but the harness cannot pack, or a format the
@@ -40,47 +24,47 @@ VALID_TRANSPORTS = _package.VALID_TRANSPORTS
 # deduplication.
 VALID_FORMATS: tuple[str, ...] = tuple(_artifacts.keys(MANIFEST))
 
-# MinerU 3.4.x backends. Validated at the handler boundary so callers get a
-# friendly error instead of a deep MinerU stack trace.
-VALID_BACKENDS = {
-    "pipeline",
-    "vlm-auto-engine",
-    "vlm-http-client",
-    "hybrid-auto-engine",
-    "hybrid-http-client",
+# How deeply MinerU 4 reads a PDF or image, cheapest first. `advanced` is the
+# default of this worker: it is the only tier that reads with the full model and
+# the only one where `image_analysis` has an effect.
+VALID_TIERS = ("flash", "basic", "standard", "advanced")
+
+# Where the text of a page comes from. `ocr` forces the model to read it, which is
+# this worker's default because on damaged material the text layer of a PDF is the
+# damage; `txt` takes the text layer as it is (exact on clean digital PDFs); `auto`
+# lets MinerU choose per file.
+VALID_OCR_MODES = ("auto", "txt", "ocr")
+
+# Fields MinerU 3.4 took and MinerU 4 does not. A job that sends one is turned
+# away with what takes its place, rather than read with a setting the caller
+# believed they had chosen. rp_validator would reject them too, but only as
+# "unexpected input", which leaves a caller to guess where the setting went.
+REMOVED_FIELDS: dict[str, str] = {
+    "backend": (
+        "MinerU 4 has no backends. Use `tier` (flash, basic, standard or "
+        "advanced) for how deeply it reads and `ocr_mode` (auto, txt or ocr) "
+        "for where the text comes from; the old vlm and hybrid backends "
+        "correspond to tier=advanced"
+    ),
+    "effort": (
+        "Use `tier` and `image_analysis`: the old effort=high is "
+        "image_analysis=true, which acts in tier=advanced"
+    ),
+    "lang": "There is no replacement: MinerU 4 recognises the language itself",
+    "formula_enable": (
+        "There is no replacement: MinerU 4 has no switch for formulas"
+    ),
+    "table_enable": "There is no replacement: MinerU 4 has no switch for tables",
+    "server_url": (
+        "There is no replacement: it belonged to the *-http-client backends, "
+        "and MinerU 4 reads inside the worker"
+    ),
 }
 
-# MinerU's hybrid-backend "effort" lever (3.3+). `high` enables image/chart
-# analysis at a speed cost; `medium` (MinerU's own default) disables it. Only
-# meaningful for the hybrid-* backends — rejected on the others in
-# validate_input. `None` means "let MinerU decide" and is not forwarded.
-VALID_EFFORTS = {"medium", "high"}
-
-# `basename` becomes the stem of every artefact MinerU writes and of the
-# archive entries built from them, so an unbounded one only fails once
-# something tries to create the file. 128 characters is far above any real
-# document name.
+# `basename` labels the response entry. MinerU 4 names its own output files, so
+# it no longer reaches the filesystem; 128 characters is still far above any real
+# document name, and the bound keeps the label from growing a response.
 MAX_BASENAME_LEN = 128
-
-# The longest suffix the worker appends to `basename` when writing an artefact
-# — it is one of the manifest's patterns, and the longest of them, so it sets
-# the longest filename a job produces. A test keeps the two in step.
-LONGEST_ARTEFACT_SUFFIX = "_content_list_v2.json"
-
-# Filesystems bound a path component in bytes, not characters, and the charset
-# rule above accepts unicode alphanumerics: 80 CJK characters already pass the
-# character limit while producing a name over this once the suffix is added.
-# Checked here so an over-long name is reported against the field rather than
-# surfacing as ENAMETOOLONG partway through writing output.
-MAX_OUTPUT_NAME_BYTES = 255
-
-# `lang` is a MinerU script/language code (e.g. "en", "ch", "east_slavic").
-# All of them are short ASCII identifiers, so anything else is a caller
-# mistake worth reporting here rather than passing down for MinerU to
-# rediscover several imports later.
-# Matched with fullmatch(), not match(): `$` also matches just before a final
-# newline, so "en\n" would otherwise pass and travel on to MinerU as a code.
-LANG_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 # Archive container for the archive transports (tarball_b64, s3). The default
 # preserves historical behavior (.tar.gz); "zip" exists for callers that need a
@@ -103,12 +87,9 @@ INPUT_SCHEMA: dict[str, dict[str, Any]] = {
     "probe":          {"type": bool, "required": False, "default": False},
     "start_page":     {"type": int,  "required": False, "default": 0},
     "end_page":       {"type": int,  "required": False, "default": -1},
-    "lang":           {"type": str,  "required": False, "default": "en"},
-    "backend":        {"type": str,  "required": False, "default": "vlm-auto-engine"},
-    "effort":         {"type": str,  "required": False, "default": None},
-    "server_url":     {"type": str,  "required": False, "default": None},
-    "formula_enable": {"type": bool, "required": False, "default": True},
-    "table_enable":   {"type": bool, "required": False, "default": True},
+    "tier":           {"type": str,  "required": False, "default": "advanced"},
+    "ocr_mode":       {"type": str,  "required": False, "default": "ocr"},
+    "image_analysis": {"type": bool, "required": False, "default": True},
     "transport":      {"type": str,  "required": False, "default": "tarball_b64"},
     "formats":        {"type": list, "required": False, "default": list(VALID_FORMATS)},
     "basename":       {"type": str,  "required": False, "default": "doc"},
@@ -118,18 +99,6 @@ INPUT_SCHEMA: dict[str, dict[str, Any]] = {
 
 def _fail(msg: str) -> None:
     raise ValueError(f"input validation failed: {msg}")
-
-
-def _allowed_server_hosts() -> frozenset[str]:
-    """Hosts an operator has declared their model server uses.
-
-    Comma-separated, compared case-insensitively against the URL's host and
-    nothing else — no suffix matching, so `evil-vllm.internal` does not satisfy
-    an entry of `vllm.internal`. Read per job like the other operator knobs, so
-    a change does not need a redeploy.
-    """
-    raw = _config.active().env(ALLOWED_SERVER_HOSTS)
-    return frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
 
 
 def _max_pages_per_job() -> int:
@@ -182,6 +151,14 @@ def validate_input(job_input: dict) -> dict:
     Returns the cleaned input dict with defaults applied. Raises ValueError
     with an ``input validation failed: ...`` prefix on any rejection.
     """
+    removed = [
+        f"{field} was removed in MinerU 4: {REMOVED_FIELDS[field]}"
+        for field in REMOVED_FIELDS
+        if field in job_input
+    ]
+    if removed:
+        _fail("; ".join(removed))
+
     result = validate(job_input, INPUT_SCHEMA)
     if result.get("errors"):
         _fail("; ".join(result["errors"]))
@@ -196,25 +173,9 @@ def validate_input(job_input: dict) -> dict:
             f"basename must be at most {MAX_BASENAME_LEN} characters; "
             f"got {len(basename)}"
         )
-    longest_name = len(f"{basename}{LONGEST_ARTEFACT_SUFFIX}".encode())
-    if longest_name > MAX_OUTPUT_NAME_BYTES:
-        _fail(
-            f"basename is too long for the filenames it produces: with "
-            f"{LONGEST_ARTEFACT_SUFFIX!r} appended it is {longest_name} bytes, "
-            f"and the limit is {MAX_OUTPUT_NAME_BYTES}. Note the limit counts "
-            f"bytes, so non-ASCII characters cost more than one each"
-        )
     cleaned["basename"] = basename
 
-    lang = cleaned.get("lang") or "en"
-    if not LANG_PATTERN.fullmatch(lang):
-        _fail(
-            f"lang must be a short script/language code (letters, digits, "
-            f"- or _); got {lang!r}"
-        )
-    cleaned["lang"] = lang
-
-    # Write `transport` and `backend` back so downstream code can read them
+    # Write `transport` and the reading settings back so downstream code can read them
     # with `cleaned[...]` (rather than `.get(...) or default`) regardless of
     # whether rp_validator's `default` mechanism populated the key.
     transport = cleaned.get("transport") or "tarball_b64"
@@ -234,24 +195,13 @@ def validate_input(job_input: dict) -> dict:
 
     cleaned["formats"] = _normalize_formats(cleaned.get("formats"))
 
-    backend = cleaned.get("backend") or "vlm-auto-engine"
-    if backend not in VALID_BACKENDS:
-        _fail(f"backend must be one of {sorted(VALID_BACKENDS)}; got {backend!r}")
-    cleaned["backend"] = backend
+    tier = cleaned["tier"]
+    if tier not in VALID_TIERS:
+        _fail(f"tier must be one of {list(VALID_TIERS)}; got {tier!r}")
 
-    # `effort` is a hybrid-backend-only lever. Left as None it isn't forwarded,
-    # so MinerU applies its own default. When set we validate it and require a
-    # hybrid-* backend, keeping the error next to the caller rather than deep in
-    # MinerU. Written back so downstream reads `cleaned["effort"]` unconditionally.
-    effort = cleaned.get("effort")
-    if effort is not None:
-        if effort not in VALID_EFFORTS:
-            _fail(f"effort must be one of {sorted(VALID_EFFORTS)}; got {effort!r}")
-        if not backend.startswith("hybrid-"):
-            _fail(
-                f"effort is only valid with a hybrid-* backend; got backend={backend!r}"
-            )
-    cleaned["effort"] = effort
+    ocr_mode = cleaned["ocr_mode"]
+    if ocr_mode not in VALID_OCR_MODES:
+        _fail(f"ocr_mode must be one of {list(VALID_OCR_MODES)}; got {ocr_mode!r}")
 
     # rp_validator skips its own type check when the value is already an
     # instance of the declared default's type, and `isinstance(True, int)` is
@@ -302,75 +252,6 @@ def validate_input(job_input: dict) -> dict:
             f"must provide exactly one of file_url / file_b64 / volume_path "
             f"(got {sources!r})"
         )
-
-    if backend.endswith("-http-client") and not cleaned.get("server_url"):
-        _fail(
-            f"backend={backend!r} requires `server_url` pointing at an "
-            f"external vLLM OpenAI-compatible server"
-        )
-
-    # `server_url` can get the same outbound-target policy as `file_url`, but
-    # **only when an operator asks for it**, and that default is a deliberate
-    # decision rather than an oversight.
-    #
-    # The exposure is real. `server_url` is a *job input*, not an operator
-    # setting — there is no env var for it — so the field is caller-controlled,
-    # and any caller of an endpoint can name a loopback, link-local or internal
-    # address and have the worker issue OpenAI-compatible requests there from
-    # inside its network, cloud metadata endpoints included.
-    #
-    # Applying the policy by default was tried and reverted. Every existing
-    # `*-http-client` deployment whose model server is on a private address —
-    # which is the ordinary way to run one — would have started failing jobs that
-    # had always succeeded, and this repo publishes from the commit title, so the
-    # change would have arrived as a patch that operators discover through broken
-    # jobs. A security default that ships as a surprise regression is not a good
-    # trade for a field whose risk depends entirely on who can reach the endpoint.
-    #
-    # So: shape check by default, full policy when
-    # MINERU_ENFORCE_TARGET_POLICY is set. Operators exposing an endpoint to
-    # untrusted callers should set it; the guides say so.
-    #
-    # An operator running a private model server names its host in
-    # MINERU_ALLOWED_SERVER_HOSTS. The earlier version of this told them to set
-    # MINERU_ALLOW_LOCAL_FETCH instead, which was bad advice: that flag lifts the
-    # address policy globally, so it re-admitted arbitrary private `server_url`
-    # values from any caller *and* disabled the same protection on `file_url`. The
-    # allowlist grants exactly the one host the operator meant.
-    #
-    # Note `require_http_url` returns the host rather than the URL — the trap the
-    # harness's AGENTS.md records. Wanted here, hence the name of the variable.
-    if server_url := cleaned.get("server_url"):
-        try:
-            host = _net.require_http_url(server_url, field="server_url")
-            if _config.active().truthy(ENFORCE_TARGET_POLICY):
-                # Enforcement means the allow-list, not an address check.
-                #
-                # Checking where the host resolves cannot hold for this field: the
-                # engine's own HTTP client resolves the name again and opens the
-                # connection, so a host whose DNS answers publicly here can answer
-                # privately there. `mineru_vl_utils` builds its `httpx.Client`
-                # internally with no transport to inject, and pinning the address
-                # would mean handing it a literal IP with a Host header -- which
-                # fails certificate validation for any https target, the very
-                # configuration a remote model server should use.
-                #
-                # So an enforcing endpoint requires the operator to name the hosts.
-                # A name the operator chose is not subject to rebinding by a caller,
-                # which is the whole difference. Without enforcement this field
-                # keeps its shape check only, as documented.
-                if host.lower() not in _allowed_server_hosts():
-                    allowed = _config.active().env_name(ALLOWED_SERVER_HOSTS)
-                    listed = sorted(_allowed_server_hosts())
-                    raise ValueError(
-                        f"server_url must name a host listed in {allowed}; got "
-                        f"{host!r}"
-                        + (f" (listed: {', '.join(listed)})" if listed else
-                           f" ({allowed} is empty, so this endpoint accepts no "
-                           f"per-job server_url)")
-                    )
-        except ValueError as e:
-            _fail(str(e))
 
     if file_url := cleaned.get("file_url"):
         try:

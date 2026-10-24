@@ -83,7 +83,7 @@ def test_counter_and_histogram_record_without_error(monkeypatch):
 
     _enable(monkeypatch)
     telemetry.counter_add("jobs_total", 1, status="ok")
-    telemetry.histogram_record("job_duration", 4.2, backend="vlm-auto-engine")
+    telemetry.histogram_record("job_duration", 4.2, tier="advanced")
 
 
 def test_warmup_records_duration_histogram(monkeypatch, tmp_path):
@@ -97,7 +97,7 @@ def test_warmup_records_duration_histogram(monkeypatch, tmp_path):
     fixture.write_bytes(b"%PDF-1.4\nfake")
     monkeypatch.setattr(warmup_module, "WARMUP_FIXTURE_PATH", fixture)
 
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):  # noqa: ARG001
+    async def fake_run(file_bytes, *, work_dir, **kwargs):  # noqa: ARG001
         out = work_dir / "fake-out"
         out.mkdir()
         return out
@@ -116,7 +116,7 @@ def test_warmup_records_duration_histogram(monkeypatch, tmp_path):
     assert warmup_samples, "warmup_duration histogram not recorded"
     name, value, attrs = warmup_samples[0]
     assert value >= 0.0
-    assert attrs["backend"] == "vlm-auto-engine"
+    assert attrs["tier"] == "advanced"
     assert attrs["status"] == "ok"
 
 

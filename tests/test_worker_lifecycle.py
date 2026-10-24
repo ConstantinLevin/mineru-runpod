@@ -86,10 +86,10 @@ def test_refresh_worker_signal_via_full_handler_path(monkeypatch):
     """End-to-end: set threshold=1, run handler, confirm refresh_worker key."""
     monkeypatch.setenv("REFRESH_WORKER_AFTER_JOBS", "1")
 
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         out = work_dir / "fake-out"
         out.mkdir()
-        (out / f"{basename}.md").write_text("# fake\n", encoding="utf-8")
+        (out / "markdown.md").write_text("# fake\n", encoding="utf-8")
         return out
 
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)

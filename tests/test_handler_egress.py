@@ -37,10 +37,10 @@ _JOB_INPUT = {"file_b64": "JVBERi0xLjQK", "basename": "doc", "transport": "inlin
 
 def _stub_run_mineru(monkeypatch):
     """A parse that finishes instantly -- the worst case for this race."""
-    async def fake_run(file_bytes, *, basename, work_dir, **kwargs):
+    async def fake_run(file_bytes, *, work_dir, **kwargs):
         out = work_dir / "out"
         out.mkdir()
-        (out / f"{basename}.md").write_text("# fake\n", encoding="utf-8")
+        (out / "markdown.md").write_text("# fake\n", encoding="utf-8")
         return out
     monkeypatch.setattr("worker.parse.run_mineru", fake_run)
 
