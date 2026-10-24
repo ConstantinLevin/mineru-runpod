@@ -1,7 +1,7 @@
 # doc-structuring — from MinerU output to a clean, cross-linked doc tree
 
 A small, **document- and standard-agnostic** toolkit for the *post-processing* half of a
-large-document pipeline. The MinerU worker turns a PDF into `content_list.json` blocks;
+large-document pipeline. The MinerU worker turns a PDF into `content_list.json` blocks (MinerU 3.4; MinerU 4 writes `structured_content.json` instead, and this pipeline has not been re-pointed at it);
 these modules turn those blocks into a folder/file tree of small, faithful, cross-linked
 Markdown files that a coding agent can navigate one file at a time.
 

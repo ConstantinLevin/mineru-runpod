@@ -96,10 +96,9 @@ def test_parse_document_forwards_options(fake_endpoint):
         file_url="https://example.com/p.pdf",
         start_page=10,
         end_page=20,
-        lang="ja",
-        backend="vlm-auto-engine",
-        formula_enable=False,
-        table_enable=False,
+        tier="standard",
+        ocr_mode="txt",
+        image_analysis=False,
         transport="inline",
         basename="custom",
     )
@@ -107,10 +106,9 @@ def test_parse_document_forwards_options(fake_endpoint):
     assert payload["file_url"] == "https://example.com/p.pdf"
     assert payload["start_page"] == 10
     assert payload["end_page"] == 20
-    assert payload["lang"] == "ja"
-    assert payload["backend"] == "vlm-auto-engine"
-    assert payload["formula_enable"] is False
-    assert payload["table_enable"] is False
+    assert payload["tier"] == "standard"
+    assert payload["ocr_mode"] == "txt"
+    assert payload["image_analysis"] is False
     assert payload["transport"] == "inline"
     assert payload["basename"] == "custom"
     # No legacy `return` key — the field is gone.
@@ -151,10 +149,22 @@ def test_parse_document_from_file_inlines_bytes(fake_endpoint, tmp_path):
     assert base64.b64decode(payload["file_b64"]) == b"%PDF-1.4\n%%EOF"
 
 
-def test_parse_document_http_client_requires_server_url(fake_endpoint):
+def test_parse_document_sends_the_worker_defaults_and_no_removed_field(fake_endpoint):
     client = MineruClient(endpoint_id="ep-1", api_key="x")
-    with pytest.raises(ValueError, match="server_url"):
-        client.parse_document(file_url="https://x", backend="vlm-http-client")
+    client.parse_document(file_url="https://x")
+    payload = client._endpoint.last_payload
+    assert (payload["tier"], payload["ocr_mode"], payload["image_analysis"]) == (
+        "advanced", "ocr", True,
+    )
+    for removed in ("backend", "effort", "lang", "formula_enable", "table_enable", "server_url"):
+        assert removed not in payload, f"the worker rejects {removed}"
+
+
+@pytest.mark.parametrize("removed", ["backend", "lang", "server_url", "formula_enable"])
+def test_parse_document_does_not_take_a_field_mineru_4_removed(fake_endpoint, removed):
+    client = MineruClient(endpoint_id="ep-1", api_key="x")
+    with pytest.raises(TypeError):
+        client.parse_document(file_url="https://x", **{removed: "anything"})
 
 
 def test_parse_document_forwards_s3_transport(fake_endpoint):
@@ -224,23 +234,27 @@ def _make_inline_entry() -> dict:
     return {
         "basename": "x",
         "markdown": "# md\n",
-        "content_list": [{"type": "text", "text": "hi"}],
-        "middle": {"k": 1},
+        "markdown_full": "# md\n\n1\n",
+        "structured_content": {"pages": [{"page_idx": 0, "blocks": []}]},
+        "middle_json": {"k": 1},
+        "model_output": {"raw": True},
         "images": {"a.png": base64.b64encode(b"\x89PNG").decode("ascii")},
     }
 
 
-def test_save_inline_from_wrapper(tmp_path):
-    dest = MineruClient.save_inline(_wrap(_make_inline_entry()), tmp_path / "out", basename="x")
-    assert (dest / "x.md").read_text() == "# md\n"
-    assert json.loads((dest / "x_content_list.json").read_text())[0]["text"] == "hi"
-    assert json.loads((dest / "x_middle.json").read_text())["k"] == 1
+def test_save_inline_writes_the_files_as_the_archive_names_them(tmp_path):
+    dest = MineruClient.save_inline(_wrap(_make_inline_entry()), tmp_path / "out")
+    assert (dest / "markdown.md").read_text() == "# md\n"
+    assert (dest / "markdown_full.md").read_text() == "# md\n\n1\n"
+    assert json.loads((dest / "middle_json.json").read_text())["k"] == 1
+    assert json.loads((dest / "structured_content.json").read_text())["pages"][0]["page_idx"] == 0
+    assert json.loads((dest / "model_output.json").read_text()) == {"raw": True}
     assert (dest / "images" / "a.png").read_bytes() == b"\x89PNG"
 
 
 def test_save_inline_from_entry(tmp_path):
-    dest = MineruClient.save_inline(_make_inline_entry(), tmp_path / "out", basename="x")
-    assert (dest / "x.md").read_text() == "# md\n"
+    dest = MineruClient.save_inline(_make_inline_entry(), tmp_path / "out")
+    assert (dest / "markdown.md").read_text() == "# md\n"
 
 
 def test_save_inline_requires_markdown_field(tmp_path):
@@ -253,25 +267,17 @@ def test_save_inline_skips_missing_formats(tmp_path):
     must not error — it simply writes whatever's present and doesn't create
     an empty images/ directory."""
     entry = {"basename": "x", "markdown": "# md\n"}
-    dest = MineruClient.save_inline(entry, tmp_path / "out", basename="x")
-    assert (dest / "x.md").read_text() == "# md\n"
-    assert not (dest / "x_content_list.json").exists()
-    assert not (dest / "x_middle.json").exists()
+    dest = MineruClient.save_inline(entry, tmp_path / "out")
+    assert (dest / "markdown.md").read_text() == "# md\n"
+    for absent in ("markdown_full.md", "middle_json.json", "structured_content.json", "model_output.json"):
+        assert not (dest / absent).exists()
     assert not (dest / "images").exists()
 
 
-def test_save_inline_defaults_basename_to_entry_basename(tmp_path):
-    """When `basename` is omitted, save_inline picks it up from the entry."""
+def test_save_inline_does_not_name_files_after_the_basename(tmp_path):
+    """MinerU 4 names its own files, so the entry's basename names none of them."""
     entry = {"basename": "from-entry", "markdown": "# md\n"}
     dest = MineruClient.save_inline(entry, tmp_path / "out")
-    assert (dest / "from-entry.md").read_text() == "# md\n"
-
-
-def test_save_inline_explicit_basename_overrides_entry(tmp_path):
-    """An explicit `basename` kwarg wins over the entry's value."""
-    entry = {"basename": "from-entry", "markdown": "# md\n"}
-    dest = MineruClient.save_inline(entry, tmp_path / "out", basename="override")
-    assert (dest / "override.md").read_text() == "# md\n"
     assert not (dest / "from-entry.md").exists()
 
 
@@ -281,12 +287,12 @@ def test_save_inline_empty_images_dict_skips_dir(tmp_path):
     entry = {
         "basename": "x",
         "markdown": "# md\n",
-        "content_list": [],
-        "middle": {},
+        "structured_content": {},
+        "middle_json": {},
         "images": {},
     }
-    dest = MineruClient.save_inline(entry, tmp_path / "out", basename="x")
-    assert (dest / "x.md").read_text() == "# md\n"
+    dest = MineruClient.save_inline(entry, tmp_path / "out")
+    assert (dest / "markdown.md").read_text() == "# md\n"
     assert not (dest / "images").exists()
 
 
@@ -366,13 +372,6 @@ def test_save_s3_tarball_handles_zip(tmp_path, monkeypatch):
 # containers and the inline path agree on what counts as a usable name.
 # -----------------------------------------------------------------------------
 
-@pytest.mark.parametrize("name", ["../out.md", "sub/dir.md", "..", ""])
-def test_save_inline_rejects_a_non_filename_basename(tmp_path, name):
-    entry = {"basename": name, "markdown": "# md\n"}
-    with pytest.raises(MineruClientError, match="refusing basename"):
-        MineruClient.save_inline(entry, tmp_path / "out", basename=name)
-
-
 def test_save_inline_rejects_a_non_filename_image_key(tmp_path):
     entry = {
         "basename": "x",
@@ -380,15 +379,8 @@ def test_save_inline_rejects_a_non_filename_image_key(tmp_path):
         "images": {"../escaped.png": base64.b64encode(b"\x89PNG").decode("ascii")},
     }
     with pytest.raises(MineruClientError, match="refusing image name"):
-        MineruClient.save_inline(entry, tmp_path / "out", basename="x")
+        MineruClient.save_inline(entry, tmp_path / "out")
     assert not (tmp_path / "escaped.png").exists()
-
-
-def test_save_inline_empty_entry_basename_still_defaults(tmp_path):
-    # An entry that carries no usable basename keeps falling back to "doc".
-    entry = {"basename": "", "markdown": "# md\n"}
-    dest = MineruClient.save_inline(entry, tmp_path / "out")
-    assert (dest / "doc.md").read_text() == "# md\n"
 
 
 def test_save_tarball_rejects_a_zip_member_outside_the_destination(tmp_path):

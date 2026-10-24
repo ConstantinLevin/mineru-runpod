@@ -47,7 +47,7 @@ def main() -> int:
         f"images={len(entry.get('images') or {})}"
     )
     dest = Path(f"./out/{file_path.stem}")
-    client.save_inline(result, dest, basename=file_path.stem)
+    client.save_inline(result, dest)
     print(f"Saved to: {dest.resolve()}")
     return 0
 

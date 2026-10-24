@@ -13,6 +13,12 @@ A typical shape in a downstream project:
 This single-file demo collapses all four into one runnable script for clarity.
 It's NOT meant to be imported by anything — it's a copy-and-specialize template.
 
+NOTE (MinerU 4): the worker call below follows the MinerU 4 contract, but the
+block shapes in `_to_parsed_document` are MinerU 3.4's `content_list_v2` ones.
+MinerU 4 returns `structured_content` (pages of blocks) instead, and its block
+fields differ, so the mapping needs re-pointing at recorded MinerU 4 responses
+before this is a template for a MinerU 4 project.
+
 What it demonstrates
 --------------------
 1. A typed `ParsedDocument` with sections + chunks + page provenance.
@@ -124,12 +130,11 @@ class MineruParserAdapter(ParserAdapter):
             file_url=artifact.presigned_url,
             file_b64=artifact.inline_bytes_b64,
             volume_path=artifact.volume_path,
-            lang=artifact.lang,
             transport="inline",
-            # Filter the response down to just content_list — this adapter
-            # builds chunks from those entries and ignores markdown / middle /
-            # images, so there's no reason to ship them back over the wire.
-            formats=["content_list"],
+            # Filter the response down to the structured blocks — this adapter
+            # builds chunks from those entries and ignores the markdown /
+            # middle JSON / images, so there's no reason to ship them back.
+            formats=["structured_content"],
             basename=artifact.artifact_id,
         )
         return _to_parsed_document(result, artifact)
@@ -265,7 +270,6 @@ def _main() -> int:
     parsed = adapter.parse(Artifact(
         artifact_id="example-doc",
         presigned_url=sys.argv[1],
-        lang="en",
     ))
     print(f"parser:    {parsed.parser}")
     print(f"elapsed:   {parsed.parser_elapsed_seconds}s")

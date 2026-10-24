@@ -21,10 +21,13 @@ constructor; the migration is import + constructor + auth.
 
 This is a *trial / comparison* on-ramp, not a permanent production interface:
 for the worker's richer native features (inline markdown, volume_path, format
-filtering, the hybrid / http-client backends) use ``MineruClient`` directly.
+filtering, the tier, OCR mode and image analysis) use ``MineruClient`` directly.
 
 Faithfulness notes / known gaps (raise rather than silently mis-parse):
     - model_version 'MinerU-HTML' and extra_formats (docx/html/latex): unsupported.
+    - model_version maps to a tier ('pipeline' -> basic, 'vlm' -> advanced);
+      enable_formula=False / enable_table=False are refused (MinerU 4 has no
+      such switch) and language is not sent (MinerU 4 recognises it itself).
     - page_ranges: single contiguous 1-based range only ('5' or '2-6').
     - full_zip_url is a presigned **.zip** (the compat client requests
       archive_format='zip', matching the cloud API); requires the endpoint to be

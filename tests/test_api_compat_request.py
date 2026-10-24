@@ -50,19 +50,21 @@ def fake_endpoint(monkeypatch):
 
 
 def test_model_version_pipeline_and_vlm():
-    assert m.model_version_to_backend("pipeline") == "pipeline"
-    assert m.model_version_to_backend("vlm") == "vlm-auto-engine"
-    assert m.model_version_to_backend(None) == "pipeline"
+    # MinerU 4 has no backends: the small-model pipeline is tier basic, and the
+    # VLM is what tiers standard and advanced add -- advanced being the worker's own.
+    assert m.model_version_to_tier("pipeline") == "basic"
+    assert m.model_version_to_tier("vlm") == "advanced"
+    assert m.model_version_to_tier(None) == "basic"
 
 
 def test_model_version_html_unsupported():
     with pytest.raises(ValueError, match="MinerU-HTML"):
-        m.model_version_to_backend("MinerU-HTML")
+        m.model_version_to_tier("MinerU-HTML")
 
 
 def test_model_version_unknown():
     with pytest.raises(ValueError, match="unknown model_version"):
-        m.model_version_to_backend("gpt-9")
+        m.model_version_to_tier("gpt-9")
 
 
 @pytest.mark.parametrize(
@@ -83,10 +85,7 @@ def test_build_payload_defaults():
     payload = m.build_worker_payload(url="https://x/p.pdf")
     assert payload == {
         "file_url": "https://x/p.pdf",
-        "backend": "pipeline",
-        "formula_enable": True,
-        "table_enable": True,
-        "lang": "ch",
+        "tier": "basic",
         "transport": "s3",
         "archive_format": "zip",
     }
@@ -98,17 +97,22 @@ def test_build_payload_translates_all_fields():
     payload = m.build_worker_payload(
         url="https://x/p.pdf",
         model_version="vlm",
-        enable_formula=False,
-        enable_table=False,
         language="en",
         page_ranges="2-6",
     )
-    assert payload["backend"] == "vlm-auto-engine"
-    assert payload["formula_enable"] is False
-    assert payload["table_enable"] is False
-    assert payload["lang"] == "en"
+    assert payload["tier"] == "advanced"
     assert payload["start_page"] == 1
     assert payload["end_page"] == 5
+    # MinerU 4 recognises the language itself and has no such field to send.
+    assert "lang" not in payload and "language" not in payload
+
+
+@pytest.mark.parametrize("switch", ["enable_formula", "enable_table"])
+def test_build_payload_rejects_switches_mineru_4_does_not_have(switch):
+    """Honouring `enable_formula=False` is impossible, and parsing as if it had
+    been honoured would be a silently wrong result."""
+    with pytest.raises(ValueError, match=switch):
+        m.build_worker_payload(url="https://x/p.pdf", **{switch: False})
 
 
 def test_build_payload_rejects_extra_formats():
@@ -153,7 +157,7 @@ def test_create_task_builds_payload_and_returns_task_id(fake_endpoint):
 
     body = client._endpoint.last_run
     assert body["input"]["file_url"] == "https://x/p.pdf"
-    assert body["input"]["backend"] == "vlm-auto-engine"
+    assert body["input"]["tier"] == "advanced"
     assert body["input"]["transport"] == "s3"
     assert body["input"]["archive_format"] == "zip"
     assert body["input"]["start_page"] == 1 and body["input"]["end_page"] == 5

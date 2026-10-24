@@ -12,10 +12,10 @@ request params and response dicts here and route them onto the worker.
 
 Mapping summary (MinerU → worker):
     url            -> file_url
-    model_version  -> backend           (pipeline->pipeline, vlm->vlm-auto-engine)
-    enable_formula -> formula_enable
-    enable_table   -> table_enable
-    language       -> lang              (pipeline-backend only, like MinerU)
+    model_version  -> tier              (pipeline->basic, vlm->advanced)
+    enable_formula -> (none)            MinerU 4 has no switch; False is refused
+    enable_table   -> (none)            MinerU 4 has no switch; False is refused
+    language       -> (none)            MinerU 4 recognises the language itself
     page_ranges    -> start_page/end_page  (single contiguous 1-based range)
 
 And MinerU's task lifecycle onto RunPod's:
@@ -29,11 +29,14 @@ from __future__ import annotations
 from typing import Any
 
 
-# MinerU `model_version` -> worker `backend`. MinerU exposes three values;
-# `MinerU-HTML` has no equivalent on this worker (no HTML-specialised model).
-MODEL_VERSION_TO_BACKEND: dict[str, str] = {
-    "pipeline": "pipeline",
-    "vlm": "vlm-auto-engine",
+# MinerU `model_version` -> worker `tier`. MinerU's cloud API exposes three values;
+# `MinerU-HTML` has no equivalent on this worker (no HTML-specialised model). MinerU 4
+# has no backends: the small-model pipeline is tier `basic`, and the VLM that
+# `standard` and `advanced` add is what `vlm` stands for -- `advanced` being the
+# worker's own default.
+MODEL_VERSION_TO_TIER: dict[str, str] = {
+    "pipeline": "basic",
+    "vlm": "advanced",
 }
 
 # RunPod job status -> MinerU task state. RunPod's terminal states beyond
@@ -48,8 +51,8 @@ RUNPOD_STATUS_TO_STATE: dict[str, str] = {
 }
 
 
-def model_version_to_backend(model_version: str | None) -> str:
-    """Translate a MinerU ``model_version`` to a worker ``backend``.
+def model_version_to_tier(model_version: str | None) -> str:
+    """Translate a MinerU ``model_version`` to a worker ``tier``.
 
     Raises ValueError on ``MinerU-HTML`` (unsupported) or any unknown value.
     """
@@ -60,12 +63,12 @@ def model_version_to_backend(model_version: str | None) -> str:
             "worker (no HTML-specialised model). Use 'pipeline' or 'vlm'."
         )
     try:
-        return MODEL_VERSION_TO_BACKEND[mv]
+        return MODEL_VERSION_TO_TIER[mv]
     except KeyError:
         raise ValueError(
             f"unknown model_version {mv!r}; expected one of "
-            f"{sorted(MODEL_VERSION_TO_BACKEND)}. For the worker's richer native "
-            f"backends (hybrid-*, *-http-client) use MineruClient directly."
+            f"{sorted(MODEL_VERSION_TO_TIER)}. For the worker's own tiers "
+            f"(flash, standard) use MineruClient directly."
         ) from None
 
 
@@ -134,20 +137,27 @@ def build_worker_payload(
     """Build the worker ``input`` payload from MinerU ``create_task`` params.
 
     Raises ValueError for features the worker can't honour (``MinerU-HTML``,
-    ``extra_formats``, non-contiguous ``page_ranges``) so the caller fails fast
-    with an actionable message rather than getting a silently-wrong parse.
+    ``extra_formats``, non-contiguous ``page_ranges``, turning formulas or tables
+    off) so the caller fails fast with an actionable message rather than getting a
+    silently-wrong parse. ``language`` is accepted and not sent: MinerU 4
+    recognises the language itself.
     """
     if extra_formats:
         raise ValueError(
             "extra_formats (docx/html/latex) is not produced by the RunPod MinerU "
-            "worker; it emits markdown + content_list + middle + images only."
+            "worker; it emits MinerU 4's markdown, middle JSON, structured content "
+            "and images only."
         )
+    for name, enabled in (("enable_formula", enable_formula), ("enable_table", enable_table)):
+        if not enabled:
+            raise ValueError(
+                f"{name}=False cannot be honoured: MinerU 4 has no switch for it, "
+                f"so the document would be read with it on and you would not "
+                f"know."
+            )
     payload: dict[str, Any] = {
         "file_url": url,
-        "backend": model_version_to_backend(model_version),
-        "formula_enable": bool(enable_formula),
-        "table_enable": bool(enable_table),
-        "lang": language,
+        "tier": model_version_to_tier(model_version),
         "transport": transport,
         # Request a real .zip so full_zip_url matches the official cloud API
         # (the worker defaults to .tar.gz; the compat client overrides to zip).

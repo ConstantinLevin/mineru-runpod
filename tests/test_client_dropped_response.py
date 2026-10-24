@@ -53,7 +53,7 @@ def test_the_message_names_this_engine_s_bulky_artifact(
 ) -> None:
     """The one part of the shared message this package supplies.
 
-    `middle.json` carries per-character boxes and is the bulk of a scanned parse,
+    `middle_json.json` holds every block with its spans and is the bulk of a scanned parse,
     so leaving it out of `formats` is the smallest change that usually fits. If the
     argument stopped being passed the message would still be sensible and this
     would be the only thing to notice.
@@ -61,7 +61,7 @@ def test_the_message_names_this_engine_s_bulky_artifact(
     _drop_the_response(client, monkeypatch)
     with pytest.raises(MineruClientError) as caught:
         client.parse_document(file_url="https://example.com/scan.pdf")
-    assert "middle.json" in str(caught.value)
+    assert "middle_json.json" in str(caught.value)
 
 
 def test_a_non_dict_response_is_still_reported_as_a_type_error(
@@ -83,9 +83,9 @@ def test_a_filtered_formats_list_is_named_when_markdown_is_missing(
     """The second thing that cost the same reader a round trip: `formats` without
     "markdown" produces an entry the inline writer refuses, and the old message
     only asked whether the transport was right."""
-    entry = {"basename": "scan", "content_list": [], "middle": {}}
+    entry = {"basename": "scan", "structured_content": {}, "middle_json": {}}
     with pytest.raises(MineruClientError) as caught:
         MineruClient.save_inline({"results": [entry]}, tmp_path)
     message = str(caught.value)
     assert "formats" in message
-    assert "content_list" in message, "say what did arrive"
+    assert "structured_content" in message, "say what did arrive"

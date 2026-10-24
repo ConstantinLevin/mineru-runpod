@@ -91,11 +91,9 @@ class MineruClient:
         volume_path: str | None = None,
         start_page: int = 0,
         end_page: int | None = None,
-        lang: str = "en",
-        backend: str = "vlm-auto-engine",
-        server_url: str | None = None,
-        formula_enable: bool = True,
-        table_enable: bool = True,
+        tier: Literal["flash", "basic", "standard", "advanced"] = "advanced",
+        ocr_mode: Literal["auto", "txt", "ocr"] = "ocr",
+        image_analysis: bool = True,
         transport: Literal["tarball_b64", "inline", "s3"] = "tarball_b64",
         formats: Iterable[str] | str | None = None,
         basename: str = "doc",
@@ -107,25 +105,32 @@ class MineruClient:
         a single-file job has a one-element ``results`` list. Use
         ``MineruClient.first(result)`` to grab the entry without indexing.
 
-        Input formats (auto-detected by the worker):
-            PDF, image (PNG/JPEG/GIF/BMP/TIFF/WebP), DOCX, PPTX, XLSX.
+        Input formats (detected by MinerU 4 from the bytes):
+            PDF and images (PNG/JPEG/GIF/BMP/TIFF/WebP); as whole documents
+            Office (DOC/DOCX/PPT/PPTX/XLS/XLSX), OpenDocument, RTF, EPUB, OFD,
+            HTML/MHTML and CSV/TSV.
 
-        Backends (MinerU 3.4.x):
-            "pipeline"           PP-OCRv6 + layout/formula/table. Multilingual OCR.
-                                  Best for non-Latin scripts; respects `lang`.
-            "vlm-auto-engine"    VLM via vLLM (default). Fast on EN/CH; ignores `lang`.
-            "vlm-http-client"    VLM via external vLLM server (`server_url` required).
-            "hybrid-auto-engine" Pipeline + VLM auto-routed based on page content.
-            "hybrid-http-client" Hybrid with external VLM server.
+        How the document is read (MinerU 4):
+            tier            "flash" | "basic" | "standard" | "advanced" (default).
+                            How deeply a PDF or image is read. Other file types
+                            are read whole in "flash", whatever is asked.
+            ocr_mode        "ocr" (default) the model reads the text, "txt" takes
+                            the PDF's own text layer (exact on clean digital PDFs),
+                            "auto" lets MinerU choose per file. "ocr" is the
+                            default because on damaged material the text layer is
+                            the damage.
+            image_analysis  Let the model describe pictures and charts (default
+                            True). Acts only in tier "advanced".
+            The response names what MinerU actually used (``tier``, ``ocr_mode``,
+            ``image_analysis``, ``mineru_version``).
 
-        For non-English/Chinese scripts (e.g. Russian/Cyrillic), use
-        `backend="pipeline"` with a script-family `lang` code such as
-        `"east_slavic"` (Russian/Ukrainian/Belarusian), `"cyrillic"`,
-        `"arabic"`, or `"devanagari"`. These are not ISO language codes.
+        MinerU 3.4's ``backend``, ``effort``, ``lang``, ``formula_enable``,
+        ``table_enable`` and ``server_url`` are gone; the worker rejects them.
 
         Transport:
             "tarball_b64"  (default) base64-encoded .tar.gz inside the entry
-            "inline"       per-format keys (markdown / content_list / middle /
+            "inline"       per-format keys (markdown / markdown_full /
+                           middle_json / structured_content / model_output /
                            images) inside the entry, filtered by ``formats``
             "s3"           uploads the .tar.gz to an S3-compatible bucket
                            configured on the worker via BUCKET_* env vars
@@ -134,20 +139,15 @@ class MineruClient:
                            gateway response cap (~20 MB).
 
         Formats (inline transport only):
-            Subset of ["markdown", "content_list", "middle", "images"].
-            Omit to get all four. A bare string is wrapped to a one-list
-            for ergonomics. For tarball_b64 and s3 the archive carries all
-            four artifacts regardless.
+            Subset of ["markdown", "markdown_full", "middle_json",
+            "structured_content", "model_output", "images"]. Omit to get all
+            six. A bare string is wrapped to a one-list for ergonomics. For
+            tarball_b64 and s3 the archive carries every file regardless.
         """
         provided = sum(1 for x in (file_url, file_b64, volume_path) if x)
         if provided != 1:
             raise ValueError(
                 "exactly one of file_url / file_b64 / volume_path must be set"
-            )
-        if backend.endswith("-http-client") and not server_url:
-            raise ValueError(
-                f"backend={backend!r} requires `server_url` pointing at an "
-                f"external vLLM OpenAI-compatible server"
             )
 
         # Client-side sugar: accept a bare string for a single format. The
@@ -166,17 +166,14 @@ class MineruClient:
         # the handler apply its own defaults is safer than transmitting None.
         payload: dict[str, Any] = {
             "start_page": start_page,
-            "lang": lang,
-            "backend": backend,
-            "formula_enable": formula_enable,
-            "table_enable": table_enable,
+            "tier": tier,
+            "ocr_mode": ocr_mode,
+            "image_analysis": image_analysis,
             "transport": transport,
             "basename": basename,
         }
         if end_page is not None:
             payload["end_page"] = end_page
-        if server_url is not None:
-            payload["server_url"] = server_url
         if file_url is not None:
             payload["file_url"] = file_url
         if file_b64 is not None:
@@ -194,7 +191,7 @@ class MineruClient:
         if result is None:
             # Not a handler bug: the gateway dropped the response. See
             # `_no_output_message`.
-            raise MineruClientError(describe_dropped_response(transport, bulky_artifact="middle.json"))
+            raise MineruClientError(describe_dropped_response(transport, bulky_artifact="middle_json.json"))
         if not isinstance(result, dict):
             raise MineruClientError(f"unexpected handler return type: {type(result)}")
         if not result.get("ok", False):
@@ -217,7 +214,7 @@ class MineruClient:
     ) -> dict[str, Any]:
         """Convenience: read a small local file and submit as file_b64.
 
-        Any format the worker supports (PDF, image, DOCX, PPTX, XLSX).
+        Any file type the worker reads (PDF, image, Office, HTML, ...).
         """
         data = Path(file_path).read_bytes()
         b64 = base64.b64encode(data).decode("ascii")
@@ -299,18 +296,17 @@ class MineruClient:
     def save_inline(
         result: dict[str, Any],
         dest_dir: str | Path,
-        basename: str | None = None,
     ) -> Path:
-        """Write the inline format keys (markdown / content_list / middle /
-        images) onto disk.
+        """Write the inline format keys onto disk under the names MinerU 4 gives
+        its files (and the archive transports ship them under): ``markdown.md``,
+        ``markdown_full.md``, ``middle_json.json``, ``structured_content.json``,
+        ``model_output.json`` and ``images/``.
 
         Accepts either the full response wrapper or a single result entry.
         Any format absent from the entry (because the caller filtered with
         ``formats=``) is silently skipped — only the requested artifacts
-        get written.
-
-        When ``basename`` is None (the default), the entry's own ``basename``
-        is used; explicit values override.
+        get written. The entry's ``basename`` names no file: MinerU 4 names
+        its own.
         """
         entry = MineruClient._unwrap(result)
         if "markdown" not in entry:
@@ -321,24 +317,19 @@ class MineruClient:
                 "If you passed `formats`, markdown has to be in the list -- "
                 "filtering it out removes it from the response."
             )
-        if basename is None:
-            basename = entry.get("basename") or "doc"
-        # Both the stem and the image keys come from the result dict, and both
-        # become filenames below — check them before opening anything.
-        basename = safe_output_name(basename, what="basename")
         dest = Path(dest_dir)
         dest.mkdir(parents=True, exist_ok=True)
-        (dest / f"{basename}.md").write_text(entry["markdown"], encoding="utf-8")
-        if "content_list" in entry:
-            (dest / f"{basename}_content_list.json").write_text(
-                json.dumps(entry.get("content_list") or [], indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-        if "middle" in entry:
-            (dest / f"{basename}_middle.json").write_text(
-                json.dumps(entry.get("middle") or {}, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
+        (dest / "markdown.md").write_text(entry["markdown"], encoding="utf-8")
+        if "markdown_full" in entry:
+            (dest / "markdown_full.md").write_text(entry["markdown_full"] or "", encoding="utf-8")
+        for key in ("middle_json", "structured_content", "model_output"):
+            if key in entry:
+                (dest / f"{key}.json").write_text(
+                    json.dumps(entry.get(key) or {}, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+        # The image keys come from the result dict and become filenames below —
+        # check them before opening anything.
         images = entry.get("images") or {}
         if images:
             (dest / "images").mkdir(parents=True, exist_ok=True)
