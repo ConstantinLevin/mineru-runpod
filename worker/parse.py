@@ -96,7 +96,7 @@ async def run_mineru(
         raise ValueError(
             f"input is not a file type MinerU {MINERU_VERSION} reads "
             f"(detected {suffix or 'nothing recognisable'!r}). It reads PDF, "
-            f"images, Office, OpenDocument, RTF, EPUB, OFD, HTML and CSV/TSV files."
+            f"images, Office, OpenDocument, RTF, EPUB, OFD, HTML, MHTML and CSV/TSV files."
         )
     source = work_dir / "input" / f"document.{suffix}"
     source.parent.mkdir(parents=True)

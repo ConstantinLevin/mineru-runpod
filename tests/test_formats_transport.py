@@ -179,3 +179,32 @@ def test_a_file_mineru_does_not_read_is_turned_away_before_any_parse(fake_mineru
     assert result["ok"] is False
     assert "txt" in result["error"]
     assert fake_mineru.calls == []
+
+
+def test_the_reason_for_turning_a_file_away_names_what_is_read(fake_mineru, run_job):
+    fake_mineru.state["suffix"] = "txt"
+    error = run_job(b"just text")["error"]
+    for readable in ("PDF", "images", "Office", "OpenDocument", "RTF", "EPUB", "OFD", "HTML", "MHTML", "CSV"):
+        assert readable in error
+
+
+def test_bytes_mineru_cannot_place_are_turned_away_with_that_reason(fake_mineru, run_job):
+    fake_mineru.state["suffix"] = ""
+    result = run_job(b"\x00\x01\x02")
+    assert result["ok"] is False
+    assert "nothing recognisable" in result["error"]
+    assert fake_mineru.calls == []
+
+
+def test_a_file_mineru_recognises_but_cannot_read_fails_with_mineru_s_reason(fake_mineru, run_job, monkeypatch):
+    import sys  # noqa: PLC0415
+
+    fake_mineru.state["suffix"] = "docx"
+
+    async def unreadable(path, **kwargs):  # noqa: ARG001
+        raise ValueError("the document container is corrupt")
+
+    monkeypatch.setattr(sys.modules["mineru.parser"], "parse_async", unreadable)
+    result = run_job(DOCX)
+    assert result["ok"] is False
+    assert "the document container is corrupt" in result["error"]
