@@ -175,7 +175,7 @@ async def _handle_parse(
             )
         # As MinerU noted them, not as asked for; a failure from here on reports them too.
         reading.update(_parse.reported_settings(output_dir, image_analysis=cleaned["image_analysis"]))
-        read_tier = reading["tier"] or tier  # metrics count a job under the tier MinerU read with
+        effective_tier = reading["tier"] or tier  # metrics count a job under the tier MinerU read with
         parse_seconds = time.monotonic() - t
         phase_ms["mineru_parse"] = int(parse_seconds * 1000)
         _telemetry.histogram_record("phase_duration", parse_seconds, phase="parse")
@@ -269,15 +269,15 @@ async def _handle_parse(
         # monotonic elapsed (sub-10ms precision); the rounded
         # `elapsed_seconds` is for the human-readable response only.
         job_seconds = time.monotonic() - started
-        _telemetry.counter_add("jobs_total", status="ok", tier=read_tier, input_format=input_format)
+        _telemetry.counter_add("jobs_total", status="ok", tier=effective_tier, input_format=input_format)
         if bumped_pages > 0:
-            _telemetry.counter_add("pages_total", bumped_pages, tier=read_tier)
+            _telemetry.counter_add("pages_total", bumped_pages, tier=effective_tier)
         _telemetry.histogram_record(
             "job_duration", job_seconds,
-            tier=read_tier, input_format=input_format,
+            tier=effective_tier, input_format=input_format,
         )
         if bumped_pages > 0 and job_seconds > 0:
-            _telemetry.histogram_record("pages_per_second", bumped_pages / job_seconds, tier=read_tier)
+            _telemetry.histogram_record("pages_per_second", bumped_pages / job_seconds, tier=effective_tier)
 
         _logging.info(
             "done",
