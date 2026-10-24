@@ -250,3 +250,23 @@ def test_a_full_mode_file_that_fails_midway_is_not_left_behind(fake_mineru, monk
     assert entry["markdown_full"] == ""  # nothing of it ships
     assert entry["degraded"]["count"] == 1
 
+
+def test_a_cleanup_that_cannot_run_does_not_turn_the_loss_into_a_failed_job(fake_mineru, monkeypatch):
+    """Removing the half-written file is best effort. If the removal itself raises,
+    the parse MinerU already paid for must still be returned."""
+    real_unlink = Path.unlink
+
+    def broken_render(self, *, mode=None, **_unused):
+        raise RuntimeError("cannot render")
+
+    def refusing_unlink(self, *args, **kwargs):
+        if self.name == "markdown_full.md":
+            raise PermissionError("read-only file system")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(fake_mineru.result_type, "markdown", broken_render)
+    monkeypatch.setattr(Path, "unlink", refusing_unlink)
+    result = _read_inline()
+    assert result["ok"] is True
+    assert result["results"][0]["markdown"] == "# body\n"
+    assert result["results"][0]["degraded"]["count"] == 1

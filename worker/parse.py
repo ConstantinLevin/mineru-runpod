@@ -126,7 +126,12 @@ async def run_mineru(
     except Exception as exc:  # noqa: BLE001 - whatever MinerU's renderer raises
         _logging.warning("full-mode markdown could not be rendered", error=repr(exc))
         # A write that failed midway must not leave a file that reads as the document.
-        (output_dir / "markdown_full.md").unlink(missing_ok=True)
+        # Best effort: if the removal fails too, the loss noted below still tells the
+        # caller not to trust that file, and the parse is returned all the same.
+        try:
+            (output_dir / "markdown_full.md").unlink(missing_ok=True)
+        except OSError as unlink_exc:
+            _logging.warning("half-written full-mode markdown could not be removed", error=repr(unlink_exc))
         (lost if lost is not None else _degraded.Report()).note(
             reason=_degraded.UNREADABLE,
             file="markdown_full.md",
