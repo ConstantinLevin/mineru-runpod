@@ -294,19 +294,19 @@ The Python client handles the rest via `client.save_s3_tarball(result, dest_dir)
 
 If you can't wire S3, the fallback is **page chunking**: split with `start_page` / `end_page` into segments small enough that each tarball fits under the cap, then concatenate the `.md` files client-side. Slower (two cold starts if workers go cold between calls) but no infra changes.
 
-## Worker returns `ValueError: input bytes do not match any supported format`
+## The job fails with a file type MinerU does not read, or succeeds with the wrong text
 
-**Symptom**: the response has `ok: false` and the above error message.
+**Symptom**: the response has `ok: false` and an error such as `input is not a file type MinerU 4.0.12 reads (detected 'txt')`, or the job succeeds but `markdown` is not your document.
 
-**Cause**: the worker's `_detect_format` checked the first ~16 bytes against known magic numbers (`%PDF`, `\x89PNG`, `PK\x03\x04` for OOXML, etc.) and didn't match anything.
+**Cause**: the worker no longer checks magic numbers; MinerU decides from the bytes what the file is. A file it does not recognise or does not read fails the job and names the type it detected. A file it does read is read, even when it is not the file you meant.
 
 Most common reasons:
 
-- **`file_url` returned an HTML error page** instead of the file. The URL is wrong, expired, or behind auth. The response body starts with `<!DOCT` or `<html`.
-- **`file_b64` was double-encoded or not base64**. The decoded bytes are random.
-- **`volume_path` points at a file that exists but isn't a supported format** (e.g. a `.csv` or `.txt`). MinerU doesn't accept plain text — convert to PDF first.
+- **`file_url` returned an HTML error page** instead of the file (wrong or expired URL, or auth in front of it). MinerU 4 reads HTML, so this no longer fails: the job succeeds and `markdown` holds the error page's text.
+- **`file_b64` was double-encoded or not base64**. The decoded bytes are random and MinerU names no type it reads.
+- **`volume_path` points at a plain-text file** (`.txt`, Markdown). MinerU does not parse those; convert to PDF first.
 
-**Fix**: verify the bytes. Download from your `file_url` directly with `curl`, run `file` on the result, or check that `base64 -d < input.b64 | xxd | head` shows the right magic bytes.
+**Fix**: verify the bytes. Download from your `file_url` directly with `curl`, run `file` on the result, look at the first lines of `markdown`, or hex-dump the start of the decoded `file_b64` and check the magic bytes.
 
 ## Worker rejects an input source it used to accept
 
@@ -354,7 +354,7 @@ Typical lines on a successful job:
 On failure:
 
 ```json
-{"ts":"2026-05-25T18:30:42.789Z","level":"error","logger":"mineru-worker","message":"job failed","job_id":"queued-uuid-abc","error_type":"ValueError","error_message":"input bytes do not match any supported format","phase_ms":{"fetch_input":8}}
+{"ts":"2026-05-25T18:30:42.789Z","level":"error","logger":"mineru-worker","message":"job failed","job_id":"queued-uuid-abc","error_type":"ValueError","error_message":"input is not a file type MinerU 4.0.12 reads (detected 'txt'). It reads PDF, images, Office, OpenDocument, RTF, EPUB, OFD, HTML and CSV/TSV files.","phase_ms":{"fetch_input":8}}
 ```
 
 On a job that succeeded but lost part of its output — a file MinerU wrote and
