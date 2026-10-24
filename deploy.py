@@ -150,11 +150,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=DEFAULTS["container_disk_gb"],
         help=(
             f"per-worker container disk (default: {DEFAULTS['container_disk_gb']} GB). "
-            f"The baked weights alone are ~17.5 GB — MinerU2.5-Pro is 2.3 GB and "
-            f"PDF-Extract-Kit-1.0 is 15.1 GB, pulled whole — on top of the "
-            f"vllm-openai base. A pull was measured at ~27 GB, so 50 GB leaves "
-            f"less working room than it looks; confirm with `df -h` in a real "
-            f"worker before parsing books that produce multi-GB tarballs."
+            f"The baked weights are MinerU's `standard` set, about 3 GB per "
+            f"MinerU's documentation (its small-model bundle plus the 2.5 GB "
+            f"MinerU2.5-Pro VLM), on top of the vllm-openai base. That figure is "
+            f"MinerU's, not measured on this image; confirm with `df -h` in a "
+            f"real worker before parsing books that produce multi-GB tarballs."
         ),
     )
 

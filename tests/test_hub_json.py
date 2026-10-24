@@ -50,7 +50,7 @@ def test_the_hub_listing_names_the_engine_series_in_the_pin() -> None:
     import re
 
     requirements = (_RUNPOD_DIR.parent / "requirements.txt").read_text(encoding="utf-8")
-    pin = re.search(r"^mineru\[.*?\]>=(\d+)\.(\d+)", requirements, re.MULTILINE)
+    pin = re.search(r"^mineru\[.*?\]==(\d+)\.(\d+)\.\d+$", requirements, re.MULTILINE)
     assert pin, "no mineru pin found in requirements.txt"
     series = f"{pin.group(1)}.{pin.group(2)}"
 
