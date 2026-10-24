@@ -74,7 +74,8 @@ def _window_in_words(start_page: int, end_page: int | None) -> str:
     first, last = _first_and_last_page(start_page, end_page)
     if last is None:
         return f"start_page={start_page} (page {first} to the end, counting from 1)"
-    return f"start_page={start_page}, end_page={end_page} (pages {first}-{last}, counting from 1)"
+    pages = f"page {first}" if first == last else f"pages {first}-{last}"
+    return f"start_page={start_page}, end_page={end_page} ({pages}, counting from 1)"
 
 
 async def run_mineru(

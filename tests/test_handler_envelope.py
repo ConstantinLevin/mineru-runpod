@@ -360,6 +360,7 @@ def test_the_page_window_becomes_a_one_based_page_range(fake_mineru, job_pages, 
     [
         ({"start_page": 3}, "start_page=3 (page 4 to the end, counting from 1)"),
         ({"start_page": 5, "end_page": 9}, "start_page=5, end_page=9 (pages 6-10, counting from 1)"),
+        ({"start_page": 4, "end_page": 4}, "start_page=4, end_page=4 (page 5, counting from 1)"),
     ],
 )
 def test_a_window_that_selects_no_page_is_refused_in_the_jobs_own_terms(fake_mineru, job_pages, named, run_job):
