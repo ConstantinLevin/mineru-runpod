@@ -86,6 +86,7 @@ def test_build_payload_defaults():
     assert payload == {
         "file_url": "https://x/p.pdf",
         "tier": "basic",
+        "ocr_mode": "auto",
         "transport": "s3",
         "archive_format": "zip",
     }
@@ -162,6 +163,15 @@ def test_create_task_builds_payload_and_returns_task_id(fake_endpoint):
     assert body["input"]["archive_format"] == "zip"
     assert body["input"]["start_page"] == 1 and body["input"]["end_page"] == 5
     assert "webhook" not in body
+
+
+@pytest.mark.parametrize(("is_ocr", "ocr_mode"), [(False, "auto"), (True, "ocr")])
+def test_create_task_reads_with_ocr_only_when_is_ocr_asks_for_it(fake_endpoint, is_ocr, ocr_mode):
+    """The cloud API's `is_ocr` (default False) forces OCR only when set. Left
+    unsent, the worker's own default would force OCR on every compat task."""
+    client = MineruApiClient(endpoint_id="ep-1", api_key="x")
+    client.create_task("https://x/p.pdf", is_ocr=is_ocr)
+    assert client._endpoint.last_run["input"].get("ocr_mode") == ocr_mode
 
 
 def test_create_task_rejects_callback(fake_endpoint):

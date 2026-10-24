@@ -13,6 +13,7 @@ request params and response dicts here and route them onto the worker.
 Mapping summary (MinerU → worker):
     url            -> file_url
     model_version  -> tier              (pipeline->basic, vlm->advanced)
+    is_ocr         -> ocr_mode          (True->ocr, False->auto)
     enable_formula -> (none)            MinerU 4 has no switch; False is refused
     enable_table   -> (none)            MinerU 4 has no switch; False is refused
     language       -> (none)            MinerU 4 recognises the language itself
@@ -126,6 +127,7 @@ def build_worker_payload(
     *,
     url: str,
     model_version: str = "pipeline",
+    is_ocr: bool = False,
     enable_formula: bool = True,
     enable_table: bool = True,
     language: str = "ch",
@@ -158,6 +160,9 @@ def build_worker_payload(
     payload: dict[str, Any] = {
         "file_url": url,
         "tier": model_version_to_tier(model_version),
+        # The cloud API forces OCR only when asked; the worker's own default is to
+        # force it, so the cloud default has to be sent rather than left out.
+        "ocr_mode": "ocr" if is_ocr else "auto",
         "transport": transport,
         # Request a real .zip so full_zip_url matches the official cloud API
         # (the worker defaults to .tar.gz; the compat client overrides to zip).

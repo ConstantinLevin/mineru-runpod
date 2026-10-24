@@ -32,7 +32,9 @@ Faithfulness notes / known gaps (raise rather than silently mis-parse):
     - full_zip_url is a presigned **.zip** (the compat client requests
       archive_format='zip', matching the cloud API); requires the endpoint to be
       deployed with BUCKET_* env vars (transport='s3').
-    - is_ocr / no_cache / cache_tolerance: accepted but no-op (no worker knob).
+    - is_ocr maps to ocr_mode: True forces OCR, False (the default) lets MinerU
+      choose per file (`auto`), as the cloud API does.
+    - no_cache / cache_tolerance: accepted but no-op (no worker knob).
     - callback: rejected — a RunPod webhook's payload (the raw /status envelope)
       differs from MinerU's signed {checksum, content} callback, so a MinerU
       callback handler can't consume it; poll with get_task()/wait_for_task().
@@ -125,7 +127,7 @@ class MineruApiClient:
         {"task_id": ...}}``. The ``task_id`` is the RunPod job id; poll it with
         :meth:`get_task`.
 
-        ``is_ocr`` / ``seed`` / ``no_cache`` / ``cache_tolerance`` are accepted
+        ``seed`` / ``no_cache`` / ``cache_tolerance`` are accepted
         for signature compatibility with the official API but have no worker-side
         effect (the worker has no result cache). ``callback`` is **rejected**: a
         RunPod webhook delivers a different, unsigned payload (the raw /status
@@ -148,6 +150,7 @@ class MineruApiClient:
         payload = build_worker_payload(
             url=url,
             model_version=model_version,
+            is_ocr=is_ocr,
             enable_formula=enable_formula,
             enable_table=enable_table,
             language=language,

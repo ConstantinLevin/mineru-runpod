@@ -169,7 +169,8 @@ The compat client raises a clear error rather than silently mis-parsing when you
 | `model_version: "MinerU-HTML"` | ❌ no HTML-specialised model → raises |
 | `extra_formats` (`docx` / `html` / `latex`) | ❌ worker emits MinerU 4's markdown, middle JSON, structured content and images only → raises |
 | `page_ranges` multi-range (`"2,4-6"`) | ❌ one contiguous slice per job → raises (submit separate tasks) |
-| `is_ocr`, `no_cache`, `cache_tolerance` | accepted, no-op (no worker equivalent) |
+| `is_ocr` | ✅ mapped to the worker's `ocr_mode`: `true` forces OCR, `false` (the default) sends `auto`, so MinerU chooses per file. The worker's own default, used by `MineruClient`, is to force OCR |
+| `no_cache`, `cache_tolerance` | accepted, no-op (no worker equivalent) |
 | `callback` / `seed` | ❌ `callback` raises — RunPod webhooks deliver a different, unsigned payload than MinerU's signed `{checksum, content}` callback; `seed` accepted but unused |
 | `data_id` | echoed from an in-process map; a `get_task` call in a *different* process won't echo it |
 | `data.extract_progress` (page counts) | not populated — RunPod's status API exposes `state`, not per-page progress |
