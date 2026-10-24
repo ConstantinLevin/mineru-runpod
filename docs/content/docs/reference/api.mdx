@@ -289,6 +289,7 @@ When the handler raises or returns an error, the response sets `ok: false` and i
 | `ok` | bool | Always `false` on failure |
 | `elapsed_seconds` | float | Time before the error |
 | `mineru_version` | string | Version that was running |
+| `tier`, `ocr_mode`, `image_analysis` | string, string, bool | How the document was read, as in the success response. Present only when the parse had finished before the failure (a response too large to deliver, an upload that failed); a job that failed earlier carries none of them |
 | `traceback` | string | Last 5 frames of the Python traceback; useful for debugging |
 | `debug` | object | Same shape as the success response — `gpu`, `model_dir`, and whatever `phase_ms` was collected before the failure |
 

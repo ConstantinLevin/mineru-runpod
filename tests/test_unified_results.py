@@ -406,3 +406,45 @@ def test_settings_mineru_did_not_note_are_reported_as_unknown(monkeypatch):
     assert result["ok"] is True
     assert (result["tier"], result["ocr_mode"], result["image_analysis"]) == (None, None, None)
 
+
+# A job whose response cannot be delivered still read the document: the caller who
+# retries wants to know with what. The settings are known once the parse is done,
+# and not before.
+
+def _refused_after_a_good_parse(monkeypatch, **job_input) -> dict:
+    from runpod_doc_worker.transport import response_size  # noqa: PLC0415
+
+    async def fake_run(file_bytes, *, work_dir, **kwargs):  # noqa: ARG001
+        out = work_dir / "fake-out"
+        out.mkdir()
+        (out / "markdown.md").write_text("x" * 1_000_000, encoding="utf-8")
+        (out / "middle_json.json").write_text(
+            json.dumps({"extensions": {"mineru": {"tier": "advanced", "parse_mode": "txt"}}}),
+            encoding="utf-8",
+        )
+        return out
+
+    monkeypatch.setattr("worker.parse.run_mineru", fake_run)
+    monkeypatch.setattr(response_size, "MAX_RESPONSE_MB", 1)
+    return asyncio.run(handler.handler({
+        "input": {
+            "file_b64": "JVBERi0xLjQK", "transport": "inline", "formats": ["markdown"],
+            **job_input,
+        }
+    }))
+
+
+def test_a_refused_response_still_names_how_the_document_was_read(monkeypatch):
+    result = _refused_after_a_good_parse(monkeypatch, ocr_mode="auto")
+    assert result["ok"] is False
+    assert "ResponseTooLargeError" in result["error"]
+    assert result["tier"] == "advanced"
+    assert result["ocr_mode"] == "txt"       # auto, resolved by MinerU
+    assert result["image_analysis"] is True
+
+
+def test_a_job_that_failed_before_any_parse_names_no_settings():
+    result = asyncio.run(handler.handler({"input": {}}))
+    assert result["ok"] is False
+    assert not {"tier", "ocr_mode", "image_analysis"} & result.keys()
+

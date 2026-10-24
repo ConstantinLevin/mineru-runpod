@@ -99,6 +99,7 @@ async def _handle_parse(
     started: float,
     gpu_info: dict[str, Any],
     phase_ms: dict[str, int],
+    reading: dict[str, Any],
 ) -> dict[str, Any]:
     # rp_validator's strict typing forces end_page to be an int; translate
     # the -1 sentinel back to None so MinerU treats it as "until end of doc".
@@ -172,6 +173,8 @@ async def _handle_parse(
                 image_analysis=cleaned["image_analysis"],
                 lost=parse_lost,
             )
+        # As MinerU noted them, not as asked for; a failure from here on reports them too.
+        reading.update(_parse.reported_settings(output_dir, image_analysis=cleaned["image_analysis"]))
         parse_seconds = time.monotonic() - t
         phase_ms["mineru_parse"] = int(parse_seconds * 1000)
         _telemetry.histogram_record("phase_duration", parse_seconds, phase="parse")
@@ -218,8 +221,7 @@ async def _handle_parse(
             "ok": True,
             "elapsed_seconds": round(time.monotonic() - started, 2),
             "mineru_version": _parse.MINERU_VERSION,
-            # How it was read, as MinerU noted it (not the request echoed back).
-            **_parse.reported_settings(output_dir, image_analysis=cleaned["image_analysis"]),
+            **reading,
             "results": [entry],
         }
         package_seconds = time.monotonic() - t
@@ -266,9 +268,7 @@ async def _handle_parse(
         # monotonic elapsed (sub-10ms precision); the rounded
         # `elapsed_seconds` is for the human-readable response only.
         job_seconds = time.monotonic() - started
-        _telemetry.counter_add(
-            "jobs_total", status="ok", tier=tier, input_format=input_format,
-        )
+        _telemetry.counter_add("jobs_total", status="ok", tier=tier, input_format=input_format)
         if bumped_pages > 0:
             _telemetry.counter_add("pages_total", bumped_pages, tier=tier)
         _telemetry.histogram_record(
@@ -276,9 +276,7 @@ async def _handle_parse(
             tier=tier, input_format=input_format,
         )
         if bumped_pages > 0 and job_seconds > 0:
-            _telemetry.histogram_record(
-                "pages_per_second", bumped_pages / job_seconds, tier=tier,
-            )
+            _telemetry.histogram_record("pages_per_second", bumped_pages / job_seconds, tier=tier)
 
         _logging.info(
             "done",
@@ -293,6 +291,7 @@ async def _handle_parse(
 async def handler(job: dict) -> dict:
     started = time.monotonic()
     phase_ms: dict[str, int] = {}
+    reading: dict[str, Any] = {}  # tier, ocr_mode, image_analysis: set once parsed
     gpu_info = _debug.collect_gpu_info()
     # Pin the job id into the logging contextvar so every line emitted
     # from this request carries `job_id` for correlation (per RunPod's
@@ -314,7 +313,7 @@ async def handler(job: dict) -> dict:
                 return await _handle_probe(started, gpu_info, phase_ms)
 
             cleaned = _schema.validate_input(raw_input)
-            return await _handle_parse(job, cleaned, started, gpu_info, phase_ms)
+            return await _handle_parse(job, cleaned, started, gpu_info, phase_ms, reading)
 
         except Exception as exc:  # noqa: BLE001
             # Top-level `error` key tells RunPod to mark this job FAILED.
@@ -337,6 +336,7 @@ async def handler(job: dict) -> dict:
                 "ok": False,
                 "elapsed_seconds": round(time.monotonic() - started, 2),
                 "mineru_version": _parse.MINERU_VERSION,
+                **reading,
                 "traceback": _redact.compact(
                     traceback.format_exc(limit=5), limit=4000
                 ),
