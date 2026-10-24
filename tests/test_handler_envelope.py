@@ -333,13 +333,8 @@ def test_the_backend_message_says_where_each_old_backend_went():
 PDF = b"%PDF-1.7 fake"
 
 
-def _read(data: bytes = PDF, **job_input) -> dict:
-    payload = base64.b64encode(data).decode("ascii")
-    return asyncio.run(handler.handler({"input": {"file_b64": payload, **job_input}}))
-
-
-def test_a_pdf_is_read_with_the_jobs_settings(fake_mineru):
-    assert _read(tier="standard", ocr_mode="txt", image_analysis=False)["ok"] is True
+def test_a_pdf_is_read_with_the_jobs_settings(fake_mineru, run_job):
+    assert run_job(tier="standard", ocr_mode="txt", image_analysis=False)["ok"] is True
     (call,) = fake_mineru.calls
     assert call["path"].suffix == ".pdf"
     assert call["bytes"] == PDF
@@ -355,16 +350,16 @@ def test_a_pdf_is_read_with_the_jobs_settings(fake_mineru):
         ({"start_page": 3}, "4-r1"),               # open-ended: to MinerU's "last page"
     ],
 )
-def test_the_page_window_becomes_a_one_based_page_range(fake_mineru, job_pages, page_range):
-    _read(**job_pages)
+def test_the_page_window_becomes_a_one_based_page_range(fake_mineru, job_pages, page_range, run_job):
+    run_job(**job_pages)
     assert fake_mineru.calls[0]["page_range"] == page_range
 
 
-def test_a_parse_without_an_importable_mineru_says_why(monkeypatch):
+def test_a_parse_without_an_importable_mineru_says_why(monkeypatch, run_job):
     monkeypatch.setattr("worker.parse.MINERU_AVAILABLE", False)
     monkeypatch.setattr(
         "worker.parse.MINERU_IMPORT_ERROR", "ModuleNotFoundError: no module named docvortex"
     )
-    result = _read()
+    result = run_job()
     assert result["ok"] is False
     assert "docvortex" in result["error"]

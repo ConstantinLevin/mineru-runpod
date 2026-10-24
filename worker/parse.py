@@ -9,6 +9,7 @@ from typing import Any
 
 from runpod_doc_worker.contract import degraded as _degraded
 from runpod_doc_worker.obs import logging as _logging
+from runpod_doc_worker.obs import redact as _redact
 
 # MinerU's heavy imports run lazily inside run_mineru so the handler module
 # itself imports on a CPU-only test machine (CI exercises input validation
@@ -124,10 +125,16 @@ async def run_mineru(
         full = saved.markdown(mode=RenderMode.FULL)
         (output_dir / "markdown_full.md").write_text(full, encoding="utf-8")
     except Exception as exc:  # noqa: BLE001 - whatever MinerU's renderer raises
-        _logging.warning("full-mode markdown could not be rendered", error=repr(exc))
+        # The renderer's exception can quote the document and URLs inside it: log it
+        # through the same reduction as a failed job's error.
+        _logging.warning(
+            "full-mode markdown could not be rendered",
+            error_type=type(exc).__name__,
+            error_message=_redact.compact(str(exc)),
+        )
         # A write that failed midway must not leave a file that reads as the document.
         # Best effort: if the removal fails too, the loss noted below still tells the
-        # caller not to trust that file, and the parse is returned all the same.
+        # caller not to trust that file, and this function still returns the parse.
         try:
             (output_dir / "markdown_full.md").unlink(missing_ok=True)
         except OSError as unlink_exc:

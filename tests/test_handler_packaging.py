@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import io
 import json
@@ -188,23 +187,16 @@ def test_build_zip_bytes_roundtrip(tmp_path):
 # -----------------------------------------------------------------------------
 
 
-def _read_inline(**job_input) -> dict:
-    payload = base64.b64encode(b"%PDF-1.7 fake").decode("ascii")
-    return asyncio.run(handler.handler({
-        "input": {"file_b64": payload, "transport": "inline", **job_input}
-    }))
-
-
-def test_the_result_is_saved_in_minerus_own_layout(fake_mineru):
-    entry = _read_inline()["results"][0]
+def test_the_result_is_saved_in_minerus_own_layout(fake_mineru, run_job):
+    entry = run_job(transport="inline")["results"][0]
     assert entry["markdown"] == "# body\n"
     assert entry["middle_json"]["extensions"]
     assert entry["structured_content"] == {}
     assert base64.b64decode(entry["images"]["page_0_image_1.jpg"]) == b"\xff\xd8jpeg"
 
 
-def test_the_full_mode_markdown_is_written_beside_the_default_one(fake_mineru):
-    entry = _read_inline()["results"][0]
+def test_the_full_mode_markdown_is_written_beside_the_default_one(fake_mineru, run_job):
+    entry = run_job(transport="inline")["results"][0]
     assert entry["markdown_full"] == "rendered:full"
 
 
@@ -212,7 +204,7 @@ def test_the_full_mode_markdown_is_written_beside_the_default_one(fake_mineru):
 # The full-mode markdown is the worker's own file
 # -----------------------------------------------------------------------------
 
-def test_a_full_mode_render_that_fails_costs_that_file_not_the_parse(fake_mineru, monkeypatch):
+def test_a_full_mode_render_that_fails_costs_that_file_not_the_parse(fake_mineru, monkeypatch, run_job):
     """`markdown_full` is built by the worker after MinerU has saved the result it
     was paid for. If rendering it fails, the saved files still ship and the loss is
     reported rather than dropped."""
@@ -222,7 +214,7 @@ def test_a_full_mode_render_that_fails_costs_that_file_not_the_parse(fake_mineru
         return "default"
 
     monkeypatch.setattr(fake_mineru.result_type, "markdown", broken)
-    result = _read_inline()
+    result = run_job(transport="inline")
 
     assert result["ok"] is True
     entry = result["results"][0]
@@ -235,7 +227,7 @@ def test_a_full_mode_render_that_fails_costs_that_file_not_the_parse(fake_mineru
     )
 
 
-def test_a_full_mode_file_that_fails_midway_is_not_left_behind(fake_mineru, monkeypatch):
+def test_a_full_mode_file_that_fails_midway_is_not_left_behind(fake_mineru, monkeypatch, run_job):
     """A half-written markdown_full.md would ship and read as the document."""
     real_write = Path.write_text
 
@@ -246,27 +238,53 @@ def test_a_full_mode_file_that_fails_midway_is_not_left_behind(fake_mineru, monk
         return real_write(self, data, *args, **kwargs)
 
     monkeypatch.setattr(Path, "write_text", failing_write)
-    entry = _read_inline()["results"][0]
+    entry = run_job(transport="inline")["results"][0]
     assert entry["markdown_full"] == ""  # nothing of it ships
     assert entry["degraded"]["count"] == 1
 
 
-def test_a_cleanup_that_cannot_run_does_not_turn_the_loss_into_a_failed_job(fake_mineru, monkeypatch):
-    """Removing the half-written file is best effort. If the removal itself raises,
-    the parse MinerU already paid for must still be returned."""
-    real_unlink = Path.unlink
+def test_a_cleanup_that_cannot_run_does_not_turn_the_loss_into_a_failed_job(fake_mineru, monkeypatch, run_job):
+    """The write of markdown_full fails midway and leaves a partial file; removing it
+    is best effort. If the removal itself raises, the parse MinerU already paid for
+    must still be returned, with the loss reported."""
+    real_write, real_unlink = Path.write_text, Path.unlink
 
-    def broken_render(self, *, mode=None, **_unused):
-        raise RuntimeError("cannot render")
+    def failing_write(self, data, *args, **kwargs):
+        if self.name == "markdown_full.md":
+            real_write(self, "# h", *args, **kwargs)
+            raise OSError("no space left on device")
+        return real_write(self, data, *args, **kwargs)
 
     def refusing_unlink(self, *args, **kwargs):
         if self.name == "markdown_full.md":
-            raise PermissionError("read-only file system")
+            raise PermissionError("operation not permitted")
         return real_unlink(self, *args, **kwargs)
 
-    monkeypatch.setattr(fake_mineru.result_type, "markdown", broken_render)
+    monkeypatch.setattr(Path, "write_text", failing_write)
     monkeypatch.setattr(Path, "unlink", refusing_unlink)
-    result = _read_inline()
+    result = run_job(transport="inline")
     assert result["ok"] is True
-    assert result["results"][0]["markdown"] == "# body\n"
-    assert result["results"][0]["degraded"]["count"] == 1
+    entry = result["results"][0]
+    assert entry["markdown"] == "# body\n"
+    assert entry["degraded"]["count"] == 1
+    assert entry["degraded"]["items"][0]["error_type"] == "OSError"
+
+
+def test_the_log_line_for_a_failed_render_keeps_a_signed_url_query_out(fake_mineru, monkeypatch, capsys, run_job):
+    """An exception from the renderer can quote the document and the URLs in it; the
+    log line goes through the same reduction as a failed job's error."""
+    monkeypatch.setenv("LOG_FORMAT", "json")
+
+    def broken(self, *, mode=None, **_unused):
+        if mode is not None and mode.value == "full":
+            raise ValueError("bad block from https://files.example.com/p.png?X-Amz-Signature=SIGSECRET")
+        return "default"
+
+    monkeypatch.setattr(fake_mineru.result_type, "markdown", broken)
+    assert run_job(transport="inline")["ok"] is True
+    logged = capsys.readouterr().out
+    records = [json.loads(line) for line in logged.splitlines() if line.startswith("{")]
+    (warning,) = [r for r in records if r["message"] == "full-mode markdown could not be rendered"]
+    assert warning["error_type"] == "ValueError"
+    assert "https://files.example.com/p.png" in warning["error_message"]
+    assert "SIGSECRET" not in logged

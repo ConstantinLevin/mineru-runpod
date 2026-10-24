@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
-import base64
 
 import pytest
 
-import handler
 from worker.schema import VALID_FORMATS, validate_input
 
 
@@ -145,31 +142,26 @@ PNG = b"\x89PNG\r\n\x1a\n fake"
 DOCX = b"PK\x03\x04 fake docx"
 
 
-def _read(data: bytes, **job_input) -> dict:
-    payload = base64.b64encode(data).decode("ascii")
-    return asyncio.run(handler.handler({"input": {"file_b64": payload, **job_input}}))
-
-
-def test_an_image_goes_to_mineru_as_the_file_it_is(fake_mineru):
+def test_an_image_goes_to_mineru_as_the_file_it_is(fake_mineru, run_job):
     fake_mineru.state["suffix"] = "png"
-    assert _read(PNG)["ok"] is True
+    assert run_job(PNG)["ok"] is True
     (call,) = fake_mineru.calls
     assert call["path"].suffix == ".png"
     assert call["bytes"] == PNG, "no conversion to PDF on the worker's side"
     assert call["tier"] == "advanced"
 
 
-def test_a_whole_document_format_is_read_in_tier_flash(fake_mineru):
+def test_a_whole_document_format_is_read_in_tier_flash(fake_mineru, run_job):
     fake_mineru.state["suffix"] = "docx"
-    assert _read(DOCX, tier="advanced")["ok"] is True
+    assert run_job(DOCX, tier="advanced")["ok"] is True
     (call,) = fake_mineru.calls
     assert call["path"].suffix == ".docx"
     assert call["tier"] == "flash"
 
 
-def test_a_file_mineru_does_not_read_is_turned_away_before_any_parse(fake_mineru):
+def test_a_file_mineru_does_not_read_is_turned_away_before_any_parse(fake_mineru, run_job):
     fake_mineru.state["suffix"] = "txt"
-    result = _read(b"just text")
+    result = run_job(b"just text")
     assert result["ok"] is False
     assert "txt" in result["error"]
     assert fake_mineru.calls == []

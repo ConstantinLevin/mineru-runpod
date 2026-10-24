@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import enum
+import json
 import os
 import sys
+import types
 from pathlib import Path
+
+import pytest
 
 # Make the repo root importable so `import handler` works.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -26,13 +33,6 @@ for key in ("RUNPOD_WEBHOOK_POST_OUTPUT", "RUNPOD_WEBHOOK_POST_STREAM"):
 # harness directly runs against its defaults — a different env prefix and
 # different input roots — and passes or fails for the wrong reason.
 import worker  # noqa: E402, F401
-
-import enum  # noqa: E402
-import json  # noqa: E402
-import types  # noqa: E402
-
-import pytest  # noqa: E402
-
 
 class _RenderMode(enum.Enum):
     DEFAULT = "default"
@@ -120,3 +120,15 @@ def fake_mineru(monkeypatch):
     module("mineru.render.contracts", RenderMode=_RenderMode)
     monkeypatch.setattr(parse, "MINERU_AVAILABLE", True)
     return types.SimpleNamespace(calls=calls, state=state, result_type=_FakeParseResult)
+
+
+@pytest.fixture
+def run_job():
+    """Run one job through the handler, with `data` as its `file_b64` source."""
+    import handler  # noqa: PLC0415
+
+    def run(data: bytes = b"%PDF-1.7 fake", **job_input) -> dict:
+        payload = base64.b64encode(data).decode("ascii")
+        return asyncio.run(handler.handler({"input": {"file_b64": payload, **job_input}}))
+
+    return run

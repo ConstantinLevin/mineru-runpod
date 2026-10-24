@@ -448,3 +448,29 @@ def test_a_job_that_failed_before_any_parse_names_no_settings():
     assert result["ok"] is False
     assert not {"tier", "ocr_mode", "image_analysis"} & result.keys()
 
+
+@pytest.mark.parametrize(
+    ("packaging_losses", "parse_losses"),
+    [(1, 1), (49, 1), (50, 1), (60, 3), (1, 60)],
+)
+def test_merged_losses_keep_a_true_count_and_a_capped_list(packaging_losses, parse_losses):
+    """The parse's losses join the packaging's in one `degraded` object. Its list of
+    items stops at the harness's cap while `count` stays the real total."""
+    from runpod_doc_worker.contract import degraded  # noqa: PLC0415
+
+    from worker.envelope import merge_degraded  # noqa: PLC0415
+
+    def losses(n: int, artifact: str) -> degraded.Report:
+        report = degraded.Report()
+        for i in range(n):
+            report.note(reason=degraded.UNREADABLE, file=f"{artifact}-{i}", artifact=artifact)
+        return report
+
+    entry = {degraded.ENTRY_KEY: losses(packaging_losses, "images").entry()}
+    merge_degraded(entry, losses(parse_losses, "markdown_full"))
+
+    merged = entry[degraded.ENTRY_KEY]
+    total = packaging_losses + parse_losses
+    assert merged["count"] == total
+    assert len(merged["items"]) == min(total, degraded.MAX_ITEMS)
+
