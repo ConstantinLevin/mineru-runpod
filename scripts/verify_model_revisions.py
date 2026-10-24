@@ -31,6 +31,19 @@ def _commits(repo_dir: Path) -> set[str]:
     return commits
 
 
+def _unrecorded(repo_dir: Path) -> list[str]:
+    """Downloaded files that have no record of the commit they came from."""
+    records = repo_dir / ".cache" / "huggingface" / "download"
+    missing = []
+    for file in sorted(repo_dir.rglob("*")):
+        relative = file.relative_to(repo_dir)
+        if not file.is_file() or relative.parts[0] == ".cache":
+            continue
+        if not (records / f"{relative.as_posix()}.metadata").is_file():
+            missing.append(relative.as_posix())
+    return missing
+
+
 def check(models: Path, expected: dict[str, str]) -> list[str]:
     """What is wrong with each repository, one sentence per repository."""
     problems = []
@@ -48,6 +61,13 @@ def check(models: Path, expected: dict[str, str]) -> list[str]:
         elif found != {commit}:
             problems.append(
                 f"{name}: expected commit {commit}, found {', '.join(sorted(found))}"
+            )
+        elif unrecorded := _unrecorded(repo_dir):
+            # Every recorded file matches, but a file with no record says nothing
+            # about where it came from: judging only the recorded ones would pass it.
+            problems.append(
+                f"{name}: {len(unrecorded)} downloaded file(s) have no download record "
+                f"(e.g. {unrecorded[0]}), so their commit cannot be compared with the expected {commit}"
             )
     return problems
 
