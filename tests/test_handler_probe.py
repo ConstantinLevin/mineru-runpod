@@ -72,6 +72,14 @@ def test_handler_probe_mode_returns_filesystem_dump():
     assert isinstance(result["mineru_available"], bool)
 
 
+def test_the_probe_says_why_mineru_cannot_be_imported(monkeypatch):
+    """`mineru_available: false` alone leaves the operator to guess which import broke."""
+    monkeypatch.setattr(parse, "MINERU_AVAILABLE", False)
+    monkeypatch.setattr(parse, "MINERU_IMPORT_ERROR", "ModuleNotFoundError: No module named 'docvortex'")
+    result = asyncio.run(handler.handler({"input": {"probe": True}}))
+    assert result["mineru_import_error"] == "ModuleNotFoundError: No module named 'docvortex'"
+
+
 def test_the_probe_does_not_report_models_missing_from_the_hf_cache(monkeypatch, tmp_path):
     """MinerU 4 keeps its baked models in $MINERU_HOME/models, never in the Hugging
     Face cache, so asking the harness to resolve them there would report a missing
