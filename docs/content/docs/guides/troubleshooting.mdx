@@ -16,7 +16,7 @@ not reached before the error can be absent.
   "debug": {
     "tier": "advanced",
     "input_format": "pdf",
-    "model_dir": null,
+    "model_dir": "/root/.cache/huggingface/hub/models--opendatalab--MinerU2.5-Pro-2605-1.2B",
     "gpu": {
       "available": true,
       "name": "NVIDIA RTX 4090",
@@ -38,7 +38,7 @@ What to look at:
 |---|---|
 | `tier` | Present after a successful parse. The tier that was asked for. If you set `basic` but see `advanced`, your caller isn't sending what you think it is. The tier MinerU actually used is the top-level `tier` of the response. |
 | `input_format` | Present after a successful parse and auto-detected from bytes. It is a coarse label (`pdf`, `image`, `ooxml` for any ZIP container, or `unknown`) kept for telemetry: whether MinerU reads the file is MinerU's call, made inside the parse. A PDF URL that returned an HTML page is therefore no longer refused up front; MinerU 4 reads HTML, so the job should succeed with the page's text (not yet confirmed on a recorded HTML file). See [Input formats](/guides/input-formats/#when-the-type-is-not-what-you-meant). |
-| `model_dir` | Best-effort path to a Hugging Face cache snapshot of a MinerU model. MinerU 4 keeps its baked models in `$MINERU_HOME/models`, not in that cache, so this is `null` on a normal worker. A `probe: true` job does not list that directory; it echoes `MINERU_HOME`, `MINERU_MODEL_SOURCE` and the engine settings, which say where MinerU looks. |
+| `model_dir` | A directory in the Hugging Face cache whose name matches a MinerU model, or `null` when there is none. It is found by name and does not say which weights loaded: MinerU 4 loads its baked models from `$MINERU_HOME/models`, which this field does not look into. On this image it is the path above. A `probe: true` job does not list `$MINERU_HOME/models` either; it echoes `MINERU_HOME`, `MINERU_MODEL_SOURCE` and the engine settings, which say where MinerU looks. |
 | `gpu.compute_capability` | 8.6 = Ampere (3090, A5000, A6000), 8.9 = Ada (4090, RTX 6000 Ada), 9.0 = Hopper (H100), 12.0 = Blackwell (crashed with the previous image; not re-tested on this one) |
 | `phase_ms.fetch_input` | If hundreds of seconds on a `file_url` job, the source URL is slow / failing |
 | `phase_ms.mineru_parse` | Per-page guidance for warm workers, **highly GPU- and content-dependent**: MinerU upstream cites **~0.5 s/page (2.12 fps) on an A100** for MinerU 3.4's VLM backend; we measured a range of **~1 s/page on uniform multi-page reports up to ~10 s/page on dense financial forms** on an A5000 24 GB (≈3.5 s/page is a reasonable single-number estimate) under MinerU 3.4's default `gpu_memory_utilization=0.5`. MinerU 3.4's pipeline backend was ~3–5 s/page across GPUs. **None of this is measured on MinerU 4 yet.** **First call on a fresh worker is much higher** (model load + vLLM warmup added ~90–130 s on MinerU 3.4). If a warm-worker call is 5× the expected per-page number for your GPU and content type, you're memory-bound and vLLM is swapping |

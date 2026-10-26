@@ -245,7 +245,7 @@ Every response includes a top-level `debug` block with information that lets you
 {
   "debug": {
     "tier": "advanced",
-    "model_dir": null,
+    "model_dir": "/root/.cache/huggingface/hub/models--opendatalab--MinerU2.5-Pro-2605-1.2B",
     "gpu": {
       "available": true,
       "name": "NVIDIA RTX 4090",
@@ -264,7 +264,7 @@ Every response includes a top-level `debug` block with information that lets you
 | Field | Notes |
 |---|---|
 | `tier` | The tier that was asked for. Echoes the input or the default; the tier MinerU used is the top-level `tier` |
-| `model_dir` | Best-effort path to a Hugging Face cache snapshot of a MinerU model. MinerU 4 keeps its baked models in its own directory (`$MINERU_HOME/models`), not in that cache, so this is `null` on a normal worker. A `probe: true` job does not list that directory either; it echoes `MINERU_HOME`, `MINERU_MODEL_SOURCE` and the engine settings, which say where MinerU looks. |
+| `model_dir` | A directory in the Hugging Face cache whose name matches a MinerU model, or `null` when there is none. It is found by name and does not say which weights loaded: MinerU 4 loads its baked models from its own directory (`$MINERU_HOME/models`), which this field does not look into. On this image it is the path above, reported by every response of MinerU 4.0.12. A `probe: true` job does not list `$MINERU_HOME/models` either; it echoes `MINERU_HOME`, `MINERU_MODEL_SOURCE` and the engine settings, which say where MinerU looks. |
 | `gpu` | Card name, `compute_capability` (8.6 = Ampere, 8.9 = Ada, 9.0 = Hopper, 12.0 = Blackwell), VRAM. Helps debug "why did my job land on a different card than my pool config?" |
 | `phase_ms` | Per-phase timings: `fetch_input` (download/decode), `mineru_parse` (MinerU's `parse_async` and the save), `package` (tarball or inline assembly) |
 

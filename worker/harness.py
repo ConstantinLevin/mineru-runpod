@@ -59,15 +59,19 @@ config.configure(
         # which the boot warmup parses. MINERU_VOLUME_ROOTS still replaces
         # the whole list at runtime.
         volume_roots=DEFAULT_VOLUME_ROOTS + ("/worker",),
-        # Reported in every response's `debug.model_dir` when the weights sit in
-        # the Hugging Face cache. MinerU 4 does not keep them there: `mineru-kit
-        # models download` writes into MinerU's own model directory
-        # ($MINERU_HOME/models), which the harness cannot look into, so this stays
-        # null on a healthy worker.
+        # Every response's `debug.model_dir` is a directory in the Hugging Face
+        # cache whose name matches this, or null when there is none. It is found
+        # by name, so it does not say which weights MinerU loaded: MinerU 4 loads
+        # its baked models from its own directory ($MINERU_HOME/models, where
+        # `mineru-kit models download` writes them and the build checks their
+        # revisions), which the harness does not look into. The image has such a
+        # cache directory all the same, and responses of MinerU 4.0.12 report it:
+        # /root/.cache/huggingface/hub/models--opendatalab--MinerU2.5-Pro-2605-1.2B.
         model_globs=("models--opendatalab--MinerU*",),
         # The `probe: true` response resolves these in the Hugging Face cache and
-        # reports a model that is not there as an issue. MinerU 4's models are never
-        # there, so naming them would flag every healthy worker; none are named.
+        # reports a model that is not complete there as an issue. That cache is not
+        # where MinerU 4 loads from, so whether an entry there is complete says
+        # nothing about the worker; none are named.
         probe_model_ids=(),
         # Things an operator can get wrong in a way that looks like a missing
         # model. The probe echoes their values: where MinerU looks for its models
@@ -93,8 +97,8 @@ config.configure(
 # MinerU 4 names its own files (`ParseResult.save`), so no pattern carries the
 # job's `basename`; it only labels the response entry now. `markdown_full.md` is
 # not MinerU's: the worker renders it from the saved middle JSON in full mode,
-# which keeps the headers, footers, page numbers, margin text and page footnotes
-# the default markdown leaves out. `model_output.json` exists only when MinerU
+# which keeps the headers, footers, page numbers and margin text the default
+# markdown leaves out. `model_output.json` exists only when MinerU
 # has raw model output to keep.
 #
 # markdown is required: it is what a caller asked for, and an empty string in

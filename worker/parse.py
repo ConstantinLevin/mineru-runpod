@@ -146,8 +146,8 @@ async def run_mineru(
     output_dir = work_dir / "output"
     result.save(FileBasedDataWriter(str(output_dir)))
 
-    # The default markdown leaves out headers, footers, page numbers, margin text
-    # and page footnotes; the full mode keeps them. Rendered from what was just
+    # The default markdown leaves out headers, footers, page numbers and margin
+    # text; the full mode keeps them. Rendered from what was just
     # saved, so its image links resolve to the files beside it. This file is the
     # worker's, not MinerU's, and MinerU's files are already on disk: if the render
     # fails, the parse is not lost, and the response says the file is missing.
