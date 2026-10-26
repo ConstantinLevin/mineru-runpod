@@ -8,18 +8,28 @@ is no separate "release" step a human performs.
 Read that again before you commit anything, because it is the fact behind the
 rule below.
 
-## A merge to main is a release and a build
+## Every push to main is a build
 
-A GitHub Release is what makes RunPod rebuild the template's image; a push
-alone does not. So every merge to `main` releases, and every release rebuilds
-the worker the endpoints pull.
+RunPod builds this repo on two triggers, and `main` sets off both:
 
-- **Merge to `main` only with the owner's approval of that merge.** Green CI,
-  an open PR or an approval of an earlier merge is not it.
-- **After every release, check the build before calling it done.** First that
-  the RunPod template carries the new image tag, then a test job whose response
-  names the installed MinerU version and the reading settings it used. The test
-  job costs money: run it on the owner's go.
+- An endpoint deployed through RunPod's GitHub integration builds on **every
+  push** to the branch it watches. No Release is needed: on 2026-10-25 and
+  2026-10-26 the fork's endpoint built `main` within two seconds of each push,
+  while the fork had no Release at all.
+- The Hub listing builds on a new **GitHub Release**, and does not watch
+  commits.
+
+So every push to `main` rebuilds the worker the endpoints pull, and every merge
+to `main` also releases. A release is a push of its own: semantic-release
+commits the version and the changelog back to `main`, and that commit is built
+again.
+
+- **Push to `main` only with the owner's approval of that push.** A merge is a
+  push. Green CI, an open PR or an approval of an earlier push is not it.
+- **After every push to `main`, check the build before calling it done.** First
+  that the RunPod template carries the new image tag, then a test job whose
+  response names the installed MinerU version and the reading settings it used.
+  The test job costs money: run it on the owner's go.
 
 ## Versioning
 
