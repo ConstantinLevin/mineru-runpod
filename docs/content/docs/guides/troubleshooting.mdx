@@ -72,7 +72,7 @@ please update your driver to a newer version, or use an earlier cuda container
 
 The trap: `allowedCudaVersions` tells RunPod "the worker accepts these driver CUDA versions." If older versions are listed there, RunPod is free to schedule on older-driver hosts, and the container's own requirement labels then reject the host at prestart. Result: intermittent failures (depends which host got picked).
 
-**Fix**: keep `allowedCudaVersions` in both `.runpod/tests.json` and `.runpod/hub.json` aligned with the actual minimum the container needs. For the current vLLM v0.21.0 base, that's `["13.0"]`; MinerU's Dockerfile names a `v0.21.0-cu129` variant for CUDA 12.9 hosts. Don't pad the list with older versions just because they look harmless — every entry that the container can't actually run on is a future flake.
+**Fix**: keep `allowedCudaVersions` in both `.runpod/tests.json` and `.runpod/hub.json` aligned with the actual minimum the container needs. For the current vLLM v0.21.0 base, the floor is 13.0, and the list names it and every newer host version RunPod offers: `["13.0", "13.2", "13.4"]`. Newer drivers run older CUDA containers, so a list with the floor alone breaks the other way: the build test waits for a 13.0 host that RunPod may not have (RTX 4090 hosts all reported 13.2 on 2026-10-26), fails, and the built image is never released; MinerU's Dockerfile names a `v0.21.0-cu129` variant for CUDA 12.9 hosts. Don't pad the list with older versions just because they look harmless — every entry that the container can't actually run on is a future flake.
 
 If you bump vLLM, re-check the CUDA floor from upstream's release notes (vLLM v0.11.0 was the bump to CUDA 13; the `v0.21.0` tag is a CUDA 13.0 image).
 

@@ -16,6 +16,6 @@
     "gpuTypeId": "NVIDIA GeForce RTX 4090",
     "gpuCount": 1,
     "containerDiskInGb": 50,
-    "allowedCudaVersions": ["13.0"]
+    "allowedCudaVersions": ["13.0", "13.2", "13.4"]
   }
 }

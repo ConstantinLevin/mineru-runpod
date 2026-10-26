@@ -10,7 +10,9 @@
     "gpuCount": 1,
     "gpuIds": "ADA_24,AMPERE_24,AMPERE_48",
     "allowedCudaVersions": [
-      "13.0"
+      "13.0",
+      "13.2",
+      "13.4"
     ],
     "env": [
       {
