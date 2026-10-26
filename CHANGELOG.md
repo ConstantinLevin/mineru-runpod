@@ -1,3 +1,81 @@
+## [2.0.0](https://github.com/ConstantinLevin/mineru-runpod/compare/v1.13.0...v2.0.0) (2026-10-26)
+
+### ⚠ BREAKING CHANGES
+
+* **versioning:** The worker runs MinerU 4 (4.0.12) instead of MinerU 3.4. Jobs
+take tier, ocr_mode and image_analysis; backend, effort, lang, formula_enable,
+table_enable and server_url are rejected. Several operator variables and build
+arguments were removed or renamed and are now ignored if set. See
+docs/content/docs/reference/versioning.mdx, "Upgrading from 1.x".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+### ⚠ Job Contract Changes (action may be required)
+
+* **client:** follow the MinerU 4 job contract in the bundled client ([a1a8c5d](https://github.com/ConstantinLevin/mineru-runpod/commit/a1a8c5d58c1edd7999cfb48f33c18322e8b44b3a)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **worker:** read with MinerU 4 and take tier, ocr_mode and image_analysis ([8d3bbe2](https://github.com/ConstantinLevin/mineru-runpod/commit/8d3bbe2d7e2b0717fd3e774d8409d33960b4c6c5)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+
+### Bug Fixes
+
+* **build:** count an empty download record as no record in the revision check ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([ff820ff](https://github.com/ConstantinLevin/mineru-runpod/commit/ff820ff7966d96951293c7cb0dd49fcfd96de81b))
+* **build:** fail the model revision check for a downloaded file that has no download record ([567c673](https://github.com/ConstantinLevin/mineru-runpod/commit/567c673daa2c9a4cc1825d4d476856b6c83701d3)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **build:** let the model revision check ignore MinerU's own completion marker ([814d41e](https://github.com/ConstantinLevin/mineru-runpod/commit/814d41e0c21652b18172de159d9d66c578790c62)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **client:** forward the compat client's is_ocr as the worker's ocr_mode ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([bb77054](https://github.com/ConstantinLevin/mineru-runpod/commit/bb77054d46e182959ad24c66f31f86d02d45f9a0))
+* **handler:** count a job's metrics under the tier MinerU read it with ([#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)) ([d3a0bbf](https://github.com/ConstantinLevin/mineru-runpod/commit/d3a0bbfcbaffc61c9d4222adfbc05990762f25f0))
+* **handler:** name how the document was read when packaging fails after the parse ([4b865fa](https://github.com/ConstantinLevin/mineru-runpod/commit/4b865facea8957ae1809fb643d2c2c05d9e528ed)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **parse:** a failed full-mode render no longer costs the parse, and the version stays known ([7ada15c](https://github.com/ConstantinLevin/mineru-runpod/commit/7ada15c8d31a71996c633934d2e593360b4ed42d)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **parse:** a half-written file that cannot be removed no longer fails the parse ([17697bb](https://github.com/ConstantinLevin/mineru-runpod/commit/17697bbace6cbabdb0285d7cad725f5a09b476fc)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **parse:** do not leave a half-written full-mode markdown behind ([efa6cbf](https://github.com/ConstantinLevin/mineru-runpod/commit/efa6cbfca475dee9b65c848769c993720c37423d)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **parse:** log a failed full-mode render through the failure reduction, and tighten its tests ([6114786](https://github.com/ConstantinLevin/mineru-runpod/commit/61147865efd9aa8ba81d253425489c3dd30de631)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **parse:** name a one-page window as one page in the refusal ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([906ba34](https://github.com/ConstantinLevin/mineru-runpod/commit/906ba3489f7b5af7a80a452aca88c40fb79098e6))
+* **parse:** name MHTML among the types a turned-away file could have been ([f148f8d](https://github.com/ConstantinLevin/mineru-runpod/commit/f148f8d345a0e4b0925b8bf1b0620c4503e593c6)), closes [#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)
+* **parse:** say which start_page and end_page select no page of a PDF ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([ac3aeb1](https://github.com/ConstantinLevin/mineru-runpod/commit/ac3aeb12c9678859f4800fd401262814f335483a))
+* **parse:** send MinerU a page window only for a PDF ([4112cc2](https://github.com/ConstantinLevin/mineru-runpod/commit/4112cc2e54637b0eeb5aab78e982d72ae1bbc7e6)), closes [#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)
+* **parse:** stop offering CSV and TSV, which a job cannot get read ([#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)) ([ebf5596](https://github.com/ConstantinLevin/mineru-runpod/commit/ebf559620b290bd99c91357c02edce0a19252363))
+* **parse:** word the page-window refusal for both ways of counting pages ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([bcbce8b](https://github.com/ConstantinLevin/mineru-runpod/commit/bcbce8b89fa0f04851797963d2bd888ee2255094))
+* **parse:** write the full-mode markdown outside the packaged directory and move it in when complete ([be37724](https://github.com/ConstantinLevin/mineru-runpod/commit/be37724b6032ce6c74d130ca5a0e9f65ca4ee751)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **probe:** stop reporting MinerU 4's models as missing from the Hugging Face cache ([564cd14](https://github.com/ConstantinLevin/mineru-runpod/commit/564cd140f956da81b0582bab74fdbbea134dde1e)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **runpod:** allow CUDA 13.2 and 13.4 hosts so the build test can run and release ([46dd9e7](https://github.com/ConstantinLevin/mineru-runpod/commit/46dd9e71c2bc2ff952a5c09c8cff84ccd8ff3d56))
+
+### Refactoring
+
+* **handler:** call the tier MinerU read with effective_tier ([#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)) ([68498a7](https://github.com/ConstantinLevin/mineru-runpod/commit/68498a79e59ab3e027c2ea2203f69fe73d1904d1))
+* **parse:** count the window from 1 in one place for the range and the refusal ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([6b9cf04](https://github.com/ConstantinLevin/mineru-runpod/commit/6b9cf04debe1b14bf00d10623038b4794c28b947))
+* **parse:** name the middle JSON and the full-mode markdown in one place ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([366fe3c](https://github.com/ConstantinLevin/mineru-runpod/commit/366fe3c83c65dc16edf1849b0e1a298738865ba0))
+
+### Documentation
+
+* **agents:** every push to main builds the endpoint, not only a release ([#3](https://github.com/ConstantinLevin/mineru-runpod/issues/3)) ([da6e9d9](https://github.com/ConstantinLevin/mineru-runpod/commit/da6e9d92a47b12d45361280cbc02266e93d8ac6d))
+* **agents:** issue tracker, triage labels and peers for the fork's agent skills ([79b97c3](https://github.com/ConstantinLevin/mineru-runpod/commit/79b97c325edafc3b9a21d252d2aae3e69abdef2c))
+* **agents:** merges to main need the owner, and every release is checked ([#3](https://github.com/ConstantinLevin/mineru-runpod/issues/3)) ([2a3364f](https://github.com/ConstantinLevin/mineru-runpod/commit/2a3364f5b7da714feb17e05f2574e192320b41c0))
+* align the HTML-page claims and the markdown_full wording with what is confirmed ([490cbb9](https://github.com/ConstantinLevin/mineru-runpod/commit/490cbb9827be60aa017b7b61560561ddab63caa7)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **api:** say that the page-window refusal is a ValueError and pin both error types ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([516786c](https://github.com/ConstantinLevin/mineru-runpod/commit/516786ccf78a8d8b828aa94ed3db9f8f33582ccd))
+* **api:** say which failures keep MinerU's error type ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([9f313c9](https://github.com/ConstantinLevin/mineru-runpod/commit/9f313c9101ac981c2eb8042eef2723e4c033bc52))
+* **api:** say which page classes the full-mode markdown carries, as recorded ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([a174c3d](https://github.com/ConstantinLevin/mineru-runpod/commit/a174c3d4bd93536ad5d51b7856575b677c3cbe3d))
+* bring the overview, the input-formats description and the b64 example in line ([#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)) ([7179e8d](https://github.com/ConstantinLevin/mineru-runpod/commit/7179e8ddfbcc743109853d8af59e9259815aa412))
+* close three gaps in the list of accepted file types ([#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)) ([e856739](https://github.com/ConstantinLevin/mineru-runpod/commit/e85673955ad216da1b9d92dcb788a7dc20df8bb9))
+* correct the VRAM variable's direction, image names, the probe and stale format keys ([287af7c](https://github.com/ConstantinLevin/mineru-runpod/commit/287af7c84d77326796cfc6d0652383106e00cca4)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* describe MinerU 4 in the README, the guides, the compatibility table and AGENTS.md ([342fc6b](https://github.com/ConstantinLevin/mineru-runpod/commit/342fc6bbd4138be4edf92c2d7c2f61e6893e024e)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* drop the last MinerU 3.4 wording from comments, the PR template and the backlog note ([682618b](https://github.com/ConstantinLevin/mineru-runpod/commit/682618b978f3d6867844b0d448dd73b45c3c0f7f)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* drop the troubleshooting row for a basename check that no longer exists ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([c0384a0](https://github.com/ConstantinLevin/mineru-runpod/commit/c0384a0a84be42491732cd807df685413d3bc994))
+* fix the tense of the HTML-page claims and say when markdown_full is absent inline ([fa95068](https://github.com/ConstantinLevin/mineru-runpod/commit/fa95068c0b66aa50f2d88ad985daaf7908e0c9ee)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **harness:** say what debug.model_dir finds, as the recorded responses show it ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([7c379bf](https://github.com/ConstantinLevin/mineru-runpod/commit/7c379bfe03e5795290eb0fc9eb025a73ef3adffc))
+* **hub:** name the 0.1 floor on vLLM's share in the VRAM setting's form ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([3396822](https://github.com/ConstantinLevin/mineru-runpod/commit/339682231ecd20a4868a56016237cc5a88061db5))
+* **hub:** say what the VRAM setting does at 8 GB and below ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([76ae910](https://github.com/ConstantinLevin/mineru-runpod/commit/76ae91098434f161b72918a103b5936f755ba567))
+* **hub:** tell the VRAM setting's form to stay above 8 GB ([#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)) ([e52ff5d](https://github.com/ConstantinLevin/mineru-runpod/commit/e52ff5d89aed896e38437694b26ada2812a1fc9a))
+* **observability:** name the tier label used when MinerU leaves no note ([#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)) ([952727e](https://github.com/ConstantinLevin/mineru-runpod/commit/952727e36409501d9e341a9c9621e3cbd57a45fb))
+* re-wrap the b64 example docstring after the longer list of types ([#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)) ([ba57508](https://github.com/ConstantinLevin/mineru-runpod/commit/ba57508717fc5758b8d1b792b0ad0b511ddf2f71))
+* replace the stale unknown-bytes section and keep the source links on upstream ([b64f04f](https://github.com/ConstantinLevin/mineru-runpod/commit/b64f04f108e75f2cb194bcd58d7f8b0b56165936)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* say that a page window is ignored for a file that is not a PDF ([c37468d](https://github.com/ConstantinLevin/mineru-runpod/commit/c37468d79fe262f76e00950c88cbe7e815a62354)), closes [#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)
+* say that the worker's own markdown_full can be missing, and soften one unconfirmed claim ([0e4dd69](https://github.com/ConstantinLevin/mineru-runpod/commit/0e4dd69e058d9692c2089283e2bbdf8da93f7208)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **scaling:** correct one number in the MINERU_VIRTUAL_VRAM_SIZE example ([bbb25e3](https://github.com/ConstantinLevin/mineru-runpod/commit/bbb25e3f1f6863457565c5301f46d8823ea2587a)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+* **troubleshooting:** say that an HTML page is read, as a recorded response shows ([#2](https://github.com/ConstantinLevin/mineru-runpod/issues/2)) ([641d13f](https://github.com/ConstantinLevin/mineru-runpod/commit/641d13f478cd6ffc830a5786f330353469e3f476))
+* **versioning:** say what operators and callers change when upgrading from 1.x ([#3](https://github.com/ConstantinLevin/mineru-runpod/issues/3)) ([3337ecf](https://github.com/ConstantinLevin/mineru-runpod/commit/3337ecff5b4a1c11dae474eda351cc86ce9507b4))
+
+### Build / Deps
+
+* **image:** bake MinerU 4.0.12 on vLLM 0.21.0 with MinerU's standard model set ([3fb57e2](https://github.com/ConstantinLevin/mineru-runpod/commit/3fb57e2a494dd2b2d97af6ebc8bea7e813ea2bee)), closes [#1](https://github.com/ConstantinLevin/mineru-runpod/issues/1)
+
 ## [1.13.0](https://github.com/sergeyshmakov/mineru-runpod/compare/v1.12.0...v1.13.0) (2026-09-03)
 
 ### ⚠ Compatibility Changes (action may be required)
