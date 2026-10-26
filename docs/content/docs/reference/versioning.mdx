@@ -57,6 +57,50 @@ than encoded in the template's version number — "v4.0.0" would not tell you wh
 MinerU you are getting. The pin is minor-locked, so an engine major cannot arrive
 by accident.
 
+## Upgrading from 1.x
+
+2.0.0 is the first release on MinerU 4. The last 1.x release, 1.13.0, ran MinerU
+3.4. The engine major changes two things for you.
+
+**Callers** send a new job contract. `tier`, `ocr_mode` and `image_analysis`
+replace `backend`, `effort`, `lang`, `formula_enable`, `table_enable` and
+`server_url`, and a job that still sends one of the old fields is rejected with
+what takes its place. See [API reference → Fields MinerU 4 removed](/reference/api/#fields-mineru-4-removed).
+
+**Operators** check the endpoint's environment and any build arguments against the
+tables below. A variable that was removed is ignored, not rejected, so a setting
+left over from 1.x does nothing and says nothing.
+
+### Runtime settings (Hub template and endpoint environment)
+
+| In 1.x | In 2.x |
+|---|---|
+| `MINERU_WARMUP_BACKEND` (default `vlm-auto-engine`) | `MINERU_WARMUP_TIER` (default `advanced`) |
+| `MINERU_WARMUP_LANG` | removed; MinerU 4 has no `lang`. New: `MINERU_WARMUP_OCR_MODE` (default `ocr`) sets how the warm-up reads |
+| `MINERU_VL_MODEL_NAME` | removed; it chose the VLM of the `*-http-client` backends. The image bakes one pinned VLM |
+| `MINERU_HYBRID_BATCH_RATIO` | removed (a MinerU 3.4 knob). Nearest: the new optional `MINERU_VIRTUAL_VRAM_SIZE`, which moves vLLM's GPU memory share and MinerU's batch sizes |
+| `MINERU_ENFORCE_TARGET_POLICY`, `MINERU_ALLOWED_SERVER_HOSTS` | removed together with the job field `server_url`, which they governed; nothing replaces them |
+| `MINERU_MODEL_SOURCE` (Hub setting) | no longer offered; the image fixes it at `local`, because the models are baked in and loaded offline |
+| `HF_TOKEN` (Hub setting) | no longer offered; the worker downloads nothing at runtime |
+
+### Build arguments (Dockerfile)
+
+| In 1.x | In 2.x |
+|---|---|
+| `VLLM_VERSION` | `VLLM_IMAGE`, the full base image reference pinned by digest |
+| (none) | `MINERU_SMALL_MODELS_REVISION`, `MINERU_VLM_REVISION`: the pinned commits of the baked model repositories, checked at build time |
+
+### Set by the image, not by you
+
+`MINERU_HOME`, `MINERU_MODEL_SMALL_BACKEND`, `MINERU_MODEL_VLM_ENGINE`, and the two
+`MINERU_LLM_AIDED_FEATURES_*` switches, which are off. They are not operator
+settings; the image sets them so that MinerU finds its baked models and never
+calls a service outside the container.
+
+An endpoint variable of the same name overrides the image's value. That includes
+`MINERU_MODEL_SOURCE`: if a 1.x endpoint set it, remove it, or MinerU no longer
+loads only the baked models.
+
 ## Reading the notes
 
 Releases are cut by semantic-release from the commit history, and the sections
