@@ -113,13 +113,35 @@ config.configure(
 # guide. Off by default there, because a library should not start raising from a
 # version bump; on here, because the alternative is a silent failure.
 #
-# BULKY_ARTIFACT names the `formats` key of the heaviest optional output so the
-# refusal can suggest the smallest `formats` change that would fit. For MinerU 4
-# that is the middle JSON on the strength of what it holds (every block with its
-# spans); which optional file is heaviest on the heaviest scans is still to be
-# measured.
+# Die Groessenpruefung bleibt beim Harness. Nur der Hinweis gehoert hierher:
+# Welche Artefakte ein Abnehmer braucht, weiss der Worker nicht. Insbesondere
+# braucht Mineroo middle_json zur Vollstaendigkeitspruefung und Darstellung.
+def _oversized_response_error(
+    size_bytes: int, *, transport: str, bulky_artifact: str | None = None
+) -> str:
+    """Abhilfe ohne Artefaktverlust; Signatur des gepinnten Harness 0.9.1."""
+    measured = size_bytes / (1024 * 1024)
+    limit = _response_size.budget_bytes(transport) / (1024 * 1024)
+    return (
+        # Mineroo liest dieses Zahlenpaar fuer die weitere Teilung.
+        f"the output is {measured:.1f} MB, past the {limit:.1f} MB this "
+        f"transport can return.\n\n"
+        "Hier abgewiesen, weil das Gateway eine zu grosse Antwort verwerfen "
+        "und den Job trotzdem als COMPLETED ohne Ausgabe melden kann.\n\n"
+        "Bei teilbaren Dokumenten kleinere Seitenmengen je Job verarbeiten: "
+        "PDFs in kleinere Dateien teilen oder kleinere start_page / end_page "
+        "Bereiche anfragen, bis alle Seiten mit allen Artefakten vorliegen. "
+        "Eine einzelne zu grosse Seite laesst sich so nicht weiter teilen.\n"
+        'Alternativ transport="s3": eine signierte URL statt der Antwortbytes '
+        "(braucht BUCKET_* am Endpoint und das s3-Extra des Harness)."
+    )
+
+
 _response_size.ENFORCE_RESPONSE_CAP = True
-_response_size.BULKY_ARTIFACT = "middle_json"
+_response_size.BULKY_ARTIFACT = None
+# 0.9.1 bietet keinen Konfigurationswert fuer den Hinweistext; die Paketierung
+# ruft diesen Formatierer zur Laufzeit auf, auch fuer tarball_b64.
+_response_size.oversized_response_error = _oversized_response_error
 
 # The two files the worker itself touches in MinerU's output directory: it reads
 # the middle JSON back, and writes the full-mode markdown beside it.

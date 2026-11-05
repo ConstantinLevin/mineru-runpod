@@ -297,6 +297,12 @@ When the handler raises or returns an error, the response sets `ok: false` and i
 
 `error` and `traceback` are normalized before they are returned: URLs inside them keep their scheme, host and path but drop credentials, query and fragment, and very long text is truncated. The same text goes to the worker's logs and, when [OpenTelemetry export](/guides/observability/) is configured, to the collector — so one failure reads the same in all three places.
 
+### Zu grosse Antworten
+
+Eine Antwort ueber dem Transportbudget wird vor der Rueckgabe mit `ResponseTooLargeError` abgewiesen, mit gemessener Groesse und Grenze im Fehlertext. Sie wird nicht still gekuerzt. Bei teilbaren Dokumenten helfen kleinere Seitenmengen je Job: PDFs in kleinere Dateien teilen oder kleinere `start_page` / `end_page` Bereiche anfragen und alle Seiten mit allen Artefakten abholen. Eine einzelne zu grosse Seite laesst sich dadurch nicht weiter teilen. Alternativ liefert `transport: "s3"` eine signierte URL; dafuer braucht der Endpoint die `BUCKET_*`-Konfiguration und das s3-Extra des Harness.
+
+Fuer Mineroo gilt zusaetzlich: `markdown`, `markdown_full` und `middle_json` sind fuer Vollstaendigkeitspruefung und Darstellung erforderlich. Seine bestehende PDF-Verarbeitung teilt ein Teilstueck mit zu grosser Antwort weiter auf. Ein Artefakt wegzulassen waere fuer diesen Abnehmer keine brauchbare Abhilfe. Der allgemeine Fehlertext empfiehlt deshalb kein Artefakt zum Weglassen und behauptet keinen ungemessenen groessten Anteil.
+
 ## Progress updates (streaming)
 
 The handler posts `{"status": "IN_PROGRESS", "output": ...}` events during a parse, which is what `/status` and `/stream` report while the job runs. Phases:
