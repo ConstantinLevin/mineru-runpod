@@ -12,8 +12,12 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 import types
+from datetime import datetime, timezone
 from typing import Any
+
+import psutil
 
 from runpod_doc_worker.contract import degraded as _degraded
 from runpod_doc_worker.obs import logging as _logging
@@ -78,6 +82,38 @@ _pages_processed_total = 0
 
 
 _refresh_lock = threading.Lock()
+
+# Vom Betriebssystem, damit auch die Imports vor diesem Modul zur Laufzeit
+# gehoeren. Danach monotone Zeit verwenden, unabhaengig von Uhrkorrekturen.
+_process_created = psutil.Process().create_time()
+_process_started_at = datetime.fromtimestamp(_process_created, timezone.utc).isoformat()
+_process_started_monotonic = time.monotonic() - (time.time() - _process_created)
+_completed_jobs = 0
+
+
+def process_debug() -> dict[str, Any]:
+    """Prozessstand beim Handler-Eintritt; laufende Jobs zaehlen noch nicht."""
+    from worker import warmup  # noqa: PLC0415
+
+    with _refresh_lock:
+        return {
+            "jobs_completed": _completed_jobs,
+            "started_at": _process_started_at,
+            "uptime_ms": max(0, int((time.monotonic() - _process_started_monotonic) * 1000)),
+            "warmup_ms": warmup.duration_ms(),
+            "warmup_status": warmup.status(),
+        }
+
+
+def record_job_completed() -> None:
+    """Jede zurueckgegebene Antwort zaehlt, auch Fehler und Probes.
+
+    Getrennt vom bisherigen Refresh-Zaehler, der nur erfolgreiche Parses
+    zaehlt. Abgebrochene Handler ohne Antwort erreichen diese Stelle nicht.
+    """
+    global _completed_jobs
+    with _refresh_lock:
+        _completed_jobs += 1
 
 
 def jobs_since_boot() -> int:

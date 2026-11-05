@@ -4,11 +4,85 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
+import psutil
 import pytest
 from runpod_doc_worker.transport import io as worker_io
 
 import handler
+
+
+def test_prozessangaben_beim_ersten_und_zweiten_job(fake_mineru, run_job, monkeypatch):
+    """Ohne Prozessblock oder mit dem Zaehler nach Abschluss wird dies rot."""
+    from worker import lifecycle
+    from worker import warmup
+
+    monkeypatch.setattr(lifecycle, "_completed_jobs", 0, raising=False)
+    monkeypatch.setattr(warmup, "_duration_ms", None)
+    monkeypatch.setattr(warmup, "_status", "not_run")
+    first = run_job()
+    second = run_job()
+
+    assert first["ok"] is True
+    assert second["ok"] is True
+    process = first["debug"].get("process")
+    assert process is not None
+    assert process["jobs_completed"] == 0
+    assert second["debug"]["process"]["jobs_completed"] == 1
+    boot = datetime.fromisoformat(process["started_at"])
+    assert boot.utcoffset().total_seconds() == 0
+    assert boot <= datetime.now(timezone.utc)
+    assert boot.timestamp() == pytest.approx(psutil.Process().create_time(), abs=0.001)
+    assert second["debug"]["process"]["started_at"] == process["started_at"]
+    assert 0 <= process["uptime_ms"] <= second["debug"]["process"]["uptime_ms"]
+    assert process["warmup_ms"] is None
+    assert process["warmup_status"] == "not_run"
+    assert {"gpu", "model_dir", "phase_ms", "tier", "input_format"} <= first["debug"].keys()
+
+
+@pytest.mark.parametrize("vorher", ["validierung", "parsefehler", "probe", "probe_abgewiesen"])
+def test_auch_fehler_und_probes_zaehlen_als_abgeschlossene_jobs(vorher, fake_mineru, run_job, monkeypatch):
+    """Eine Fehlerantwort ohne Prozessblock oder ohne Zaehlerfortschritt faellt auf."""
+    from worker import lifecycle
+
+    monkeypatch.setattr(lifecycle, "_completed_jobs", 0)
+    monkeypatch.setattr(lifecycle, "_jobs_processed", 0)
+    if vorher == "validierung":
+        first = asyncio.run(handler.handler({"input": {}}))
+    elif vorher == "parsefehler":
+        fake_mineru.state["error"] = RuntimeError("synthetischer Parsefehler")
+        first = run_job()
+        fake_mineru.state["error"] = None
+    else:
+        monkeypatch.setenv("MINERU_DISABLE_PROBE", "1" if vorher == "probe_abgewiesen" else "0")
+        monkeypatch.setattr(handler._debug, "probe_filesystem", lambda: {})
+        first = asyncio.run(handler.handler({"input": {"probe": True}}))
+    assert first["ok"] is (vorher == "probe")
+    assert first["debug"]["process"]["jobs_completed"] == 0
+    assert lifecycle.jobs_since_boot() == 0
+    assert run_job()["debug"]["process"]["jobs_completed"] == 1
+
+
+def test_prozesslaufzeit_wird_beim_eintreffen_gemessen(fake_mineru, run_job, monkeypatch):
+    """Parsezeit darf den Prozessstand beim Eintreffen nicht veraendern."""
+    import sys
+    from worker import lifecycle
+
+    now = [100.0]
+    monkeypatch.setattr(lifecycle, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    monkeypatch.setattr(lifecycle, "_process_started_monotonic", 50.0)
+    parser = sys.modules["mineru.parser"]
+    parse_async = parser.parse_async
+
+    async def zeitverbrauchender_parse(*args, **kwargs):
+        now[0] += 25.0
+        return await parse_async(*args, **kwargs)
+
+    monkeypatch.setattr(parser, "parse_async", zeitverbrauchender_parse)
+    assert run_job()["debug"]["process"]["uptime_ms"] == 50000
+    assert run_job()["debug"]["process"]["uptime_ms"] == 75000
 
 
 def test_resolve_requires_exactly_one_source():

@@ -27,6 +27,8 @@ docvortex==0.5.16
 # Exact: worker/__init__ reaches into undocumented internals (rp_scale, rp_ping),
 # which tests/test_runpod_internals.py checks against this version.
 runpod==1.10.0
+# Prozessstart fuer debug.process; bereits eine Abhaengigkeit des RunPod SDK.
+psutil>=5.9.0
 
 # The engine-agnostic half of this worker: input transport (url / b64 /
 # volume_path + format detection), outbound target checks, response packaging

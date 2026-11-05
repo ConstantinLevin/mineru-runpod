@@ -290,31 +290,28 @@ async def _handle_parse(
 
 
 async def handler(job: dict) -> dict:
+    process = _lifecycle.process_debug()
     started = time.monotonic()
     phase_ms: dict[str, int] = {}
     reading: dict[str, Any] = {}  # tier, ocr_mode, image_analysis: set once parsed
     gpu_info = _debug.collect_gpu_info()
-    # Pin the job id into the logging contextvar so every line emitted
-    # from this request carries `job_id` for correlation (per RunPod's
-    # write-logs guidance). Falls back to "<unknown>" if RunPod doesn't
-    # surface an id (sync clients without a queued job).
+    # Job-ID fuer alle Logzeilen dieses Aufrufs; Sync-Jobs haben oft keine.
     job_id = job.get("id") or "<unknown>"
     _logging.job_id_var.set(job_id)
     with _telemetry.span("mineru.job", **{"runpod.job_id": job_id}):
         try:
             raw_input = job.get("input") or {}
-            # Probe mode bypasses schema validation: a probe has no file source
-            # and the operator may want to send arbitrary debug flags through.
+            # Probes brauchen keine Dateiquelle und umgehen die Eingabevalidierung.
             if raw_input.get("probe") is True:
                 if not _probe_allowed():
                     raise ValueError(
                         "probe is disabled on this endpoint "
                         "(MINERU_DISABLE_PROBE)"
                     )
-                return await _handle_probe(started, gpu_info, phase_ms)
-
-            cleaned = _schema.validate_input(raw_input)
-            return await _handle_parse(job, cleaned, started, gpu_info, phase_ms, reading)
+                response = await _handle_probe(started, gpu_info, phase_ms)
+            else:
+                cleaned = _schema.validate_input(raw_input)
+                response = await _handle_parse(job, cleaned, started, gpu_info, phase_ms, reading)
 
         except Exception as exc:  # noqa: BLE001
             # Top-level `error` key tells RunPod to mark this job FAILED.
@@ -332,7 +329,7 @@ async def handler(job: dict) -> dict:
                 error_message=_redact.compact(str(exc)),
                 phase_ms=phase_ms,
             )
-            return {
+            response = {
                 "error": _redact.compact(f"{type(exc).__name__}: {exc}"),
                 "ok": False,
                 "elapsed_seconds": round(time.monotonic() - started, 2),
@@ -343,6 +340,9 @@ async def handler(job: dict) -> dict:
                 ),
                 "debug": _build_debug(phase_ms, gpu_info),
             }
+    response["debug"]["process"] = process
+    _lifecycle.record_job_completed()
+    return response
 
 
 # -----------------------------------------------------------------------------
