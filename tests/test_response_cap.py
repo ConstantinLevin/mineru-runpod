@@ -1,22 +1,13 @@
-"""Refusing a response the gateway would discard, as this worker configures it.
+"""Zu grosse Antworten abweisen und dem Abnehmer eine brauchbare Abhilfe nennen.
 
-The refusal itself lives in `runpod_doc_worker.transport.response_size` and is
-tested there. What is asserted here is the half that belongs to this repository
-and was not covered anywhere: that this worker *turns the refusal on*, and that
-when it fires the explanation reaches the caller instead of a job reported
-COMPLETED with no output.
+Die Messung und Abweisung liegen im Harness. Dieser Worker schaltet sie ein
+und ersetzt dessen allgemeinen Hinweis, der benoetigte Artefakte zum Weglassen
+empfehlen koennte. Geprueft wird die Antwort am Handler, einschliesslich des
+Zahlenpaars, das Mineroo fuer die weitere Teilung liest.
 
-Both halves are needed. `ENFORCE_RESPONSE_CAP` defaults to false in the harness
-— deliberately, so adopting a release cannot change what an existing worker
-returns — so the two assignments in `worker/harness.py` are the entire reason
-this endpoint refuses anything at all. Delete them and every test in the suite
-still passed before this file existed.
-
-The cap is lowered rather than fed a real 18 MB payload: `measure_entry_bytes`
-walks a string character by character, so asserting against the shipped 20 MB
-would spend seconds of a suite that runs in three. What the constant *is* stays
-the harness's business; what this worker does when a response exceeds it is
-this file's.
+Synthetische Artefakte und eine abgesenkte Grenze vermeiden grosse Testdaten.
+Die ausgelieferte Grenze bleibt Sache des Harness; hier zaehlt, was der
+Abnehmer bei einer Ueberschreitung erhaelt.
 """
 
 from __future__ import annotations
@@ -71,12 +62,6 @@ def test_this_worker_turns_the_refusal_on():
     assert response_size.ENFORCE_RESPONSE_CAP is True
 
 
-def test_the_refusal_can_name_this_engine_s_heaviest_artefact():
-    """Without this the message suggests "a shorter formats list" and leaves the
-    caller to work out which format is the bulk of a scan."""
-    assert response_size.BULKY_ARTIFACT == "middle_json"
-
-
 # -----------------------------------------------------------------------------
 # What the caller gets when it fires
 # -----------------------------------------------------------------------------
@@ -101,18 +86,23 @@ def test_the_refusal_reaches_the_caller_in_the_error_field(oversized_result):
     number is what this asserts against."""
     error = oversized_result["error"]
     assert error.startswith("ResponseTooLargeError:")
-    assert "past the" in error and "MB" in error
+    # Mineroo liest dieses Zahlenpaar, um die weitere Teilung zu planen.
+    sizes = re.search(r"\boutput is (\d+\.\d+) MB, past the (\d+\.\d+) MB\b", error)
+    assert sizes is not None
+    assert sizes.groups() == ("1.0", "0.9")
 
 
 def test_the_refusal_says_how_to_get_the_output_anyway(oversized_result):
-    """An error that only says "too large" leaves the caller guessing, so each
-    of the three ways out is part of the contract."""
+    """Teilbare Dokumente mit allen Artefakten erneut einreichen koennen."""
     error = oversized_result["error"]
-    # names the `formats` key a caller would leave out, not a file name
-    assert re.search(r"leaves out middle_json(?!\.)", error)
-    assert 'transport="s3"' in error       # a presigned URL instead of bytes
-    assert "start_page" in error           # a bounded page range
-    # And why it was refused here rather than delivered and dropped.
+    # Mineroo braucht beide Markdowns und middle_json. Auch ein pauschaler
+    # kuerzerer formats-Filter waere fuer diesen Abnehmer kein brauchbarer Rat.
+    assert "formats" not in error
+    assert "middle_json" not in error
+    assert 'transport="s3"' in error
+    assert "start_page" in error and "end_page" in error
+    assert "kleinere Seitenmengen je Job" in error
+    assert "alle Seiten mit allen Artefakten" in error
     assert "COMPLETED" in error
 
 
