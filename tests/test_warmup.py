@@ -26,15 +26,17 @@ def clean_env(monkeypatch):
     """Each test starts with a clean warmup env."""
     for var in ("MINERU_SKIP_WARMUP", "MINERU_WARMUP_TIER", "MINERU_WARMUP_OCR_MODE"):
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(warmup_module, "_duration_ms", None)
     yield
 
 
-def test_warmup_skipped_when_env_var_truthy(monkeypatch, capsys):
+def test_warmup_skipped_when_env_var_truthy(monkeypatch, capsys, run_job):
     monkeypatch.setenv("MINERU_SKIP_WARMUP", "1")
     warmup_module.warmup()
     out = capsys.readouterr().out
     assert "MINERU_SKIP_WARMUP set" in out
     assert "skipping" in out
+    assert run_job()["debug"]["process"]["warmup_ms"] is None
 
 
 @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "Yes", "on", "  1  "])
@@ -60,12 +62,13 @@ def test_warmup_skip_falsy_values_do_not_skip(monkeypatch, capsys, value, tmp_pa
 # Fixture-missing path
 # -----------------------------------------------------------------------------
 
-def test_warmup_skipped_when_fixture_missing(monkeypatch, capsys, tmp_path):
+def test_warmup_skipped_when_fixture_missing(monkeypatch, capsys, tmp_path, run_job):
     monkeypatch.setattr(warmup_module, "WARMUP_FIXTURE_PATH", tmp_path / "nope.pdf")
     warmup_module.warmup()
     out = capsys.readouterr().out
     assert "fixture not found" in out
     assert "skipping" in out
+    assert run_job()["debug"]["process"]["warmup_ms"] is None
 
 
 # -----------------------------------------------------------------------------
@@ -77,6 +80,30 @@ def _seed_fixture(monkeypatch, tmp_path) -> Path:
     fixture.write_bytes(b"%PDF-1.4\nfake")
     monkeypatch.setattr(warmup_module, "WARMUP_FIXTURE_PATH", fixture)
     return fixture
+
+
+@pytest.mark.parametrize("fehlgeschlagen", [False, True])
+def test_aufwaermdauer_steht_in_der_jobantwort(fake_mineru, run_job, monkeypatch, tmp_path, fehlgeschlagen):
+    """Ein nur geloggter Warmup ohne Wert in debug.process faellt hier auf."""
+    import sys
+    from types import SimpleNamespace
+
+    _seed_fixture(monkeypatch, tmp_path)
+    now = [100.0]
+    monkeypatch.setattr(warmup_module, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    parser = sys.modules["mineru.parser"]
+    parse_async = parser.parse_async
+
+    async def zeitverbrauchender_parse(*args, **kwargs):
+        now[0] += 1.25
+        return await parse_async(*args, **kwargs)
+
+    monkeypatch.setattr(parser, "parse_async", zeitverbrauchender_parse)
+    if fehlgeschlagen:
+        fake_mineru.state["error"] = RuntimeError("synthetischer Warmup-Fehler")
+    warmup_module.warmup()
+    fake_mineru.state["error"] = None
+    assert run_job()["debug"]["process"]["warmup_ms"] == 1250
 
 
 def test_warmup_calls_run_mineru_with_warmup_shaped_args(monkeypatch, capsys, tmp_path):

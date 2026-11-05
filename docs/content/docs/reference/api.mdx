@@ -151,7 +151,7 @@ For single-file jobs the markdown lives at `result.results[0].markdown`. Higher-
 | `ocr_mode` | string \| null | The OCR mode MinerU noted: `txt` or `ocr`, never `auto` — `auto` is resolved to what MinerU chose for the file |
 | `image_analysis` | bool \| null | Whether image analysis acted: `false` outside tier `advanced` even when asked for |
 | `results` | array | One entry per parsed file. Single-file jobs have a one-element list. See below for the entry shape. |
-| `debug` | object | Observability data: `tier`, GPU info, phase timings, and a best-effort cached model path. See below. |
+| `debug` | object | Observability data: `tier`, GPU info, phase timings, process information, and a best-effort cached model path. See below. |
 | `refresh_worker` | bool | Present only when a `REFRESH_WORKER_AFTER_*` threshold has tripped. Tells RunPod to recycle the worker after returning. |
 
 ### Per-entry keys (file-scoped, inside `results[]`)
@@ -256,6 +256,12 @@ Every response includes a top-level `debug` block with information that lets you
       "fetch_input": 12,
       "mineru_parse": 18420,
       "package": 95
+    },
+    "process": {
+      "jobs_completed": 0,
+      "started_at": "2026-01-01T12:00:00+00:00",
+      "warmup_ms": 110250,
+      "uptime_ms": 112500
     }
   }
 }
@@ -267,8 +273,20 @@ Every response includes a top-level `debug` block with information that lets you
 | `model_dir` | A directory in the Hugging Face cache whose name matches a MinerU model, or `null` when there is none. It is found by name and does not say which weights loaded: MinerU 4 loads its baked models from its own directory (`$MINERU_HOME/models`), which this field does not look into. On this image it is the path above, reported by every response of MinerU 4.0.12. A `probe: true` job does not list `$MINERU_HOME/models` either; it echoes `MINERU_HOME`, `MINERU_MODEL_SOURCE` and the engine settings, which say where MinerU looks. |
 | `gpu` | Card name, `compute_capability` (8.6 = Ampere, 8.9 = Ada, 9.0 = Hopper, 12.0 = Blackwell), VRAM. Helps debug "why did my job land on a different card than my pool config?" |
 | `phase_ms` | Per-phase timings: `fetch_input` (download/decode), `mineru_parse` (MinerU's `parse_async` and the save), `package` (tarball or inline assembly) |
+| `process` | Prozessstand beim Eintritt in den Handler, fuer diesen Job eingefroren. Bei Parse-Erfolg, Fehlern und Probes vorhanden; Felder siehe unten |
 
-On failure, `debug` still contains `gpu`, `model_dir`, and whatever `phase_ms` was collected before the error.
+| Feld in `process` | Typ | Bedeutung |
+|---|---|---|
+| `jobs_completed` | int | Anzahl der Handler-Aufrufe, die vor Eintreffen dieses Jobs bereits eine Antwort zurueckgegeben haben, einschliesslich Fehlern und Probes. Die Aufwaermrunde zaehlt nicht. `0` bedeutet, dass noch kein Job abgeschlossen war; bei der Standard-Parallelitaet 1 ist dies der erste Job des Prozesses. Bei hoeherer Parallelitaet koennen mehrere gleichzeitig laufende Jobs `0` melden |
+| `started_at` | string | Startzeit des Python-Worker-Prozesses laut Betriebssystem, ISO 8601 in UTC (`+00:00`); vor Modellladen und Aufwaermrunde |
+| `warmup_ms` | int \| null | Gemessene Dauer der Aufwaermrunde in Millisekunden, auch bei einem fehlgeschlagenen Versuch. `null`, wenn keine Dauer vorliegt (noch nicht aufgerufen, per `MINERU_SKIP_WARMUP` uebersprungen oder Fixture fehlt). Eine Dauer bestaetigt keinen erfolgreichen Warmup |
+| `uptime_ms` | int | Alter des Prozesses in Millisekunden beim Handler-Eintritt, einschliesslich der Initialisierung. Aus dem Betriebssystem-Startzeitpunkt auf eine monotone Uhr bezogen; die Bearbeitungsdauer dieses Jobs ist darin nicht enthalten |
+
+Die Angaben beschreiben den Prozess, nicht die RunPod-Warteschlange: `delayTime`, `executionTime` und `workerId` kommen weiterhin aus RunPods Statusantwort. Ein neuer Prozess und lange `delayTime` sind gemeinsam ein Hinweis auf einen Kaltstart; der Prozessblock allein misst keine Kaltstartlatenz.
+
+RunPods [Endpoint-Dokumentation](https://docs.runpod.io/serverless/endpoints/endpoint-configurations#flashboot) beschreibt FlashBoot als Erhalten von Worker-Zustand nach dem Herunterfahren. Der [RunPod-Artikel vom 10.10.2026](https://www.runpod.io/blog/serverless-gpu-cold-starts-flashboot) beschreibt pausierte Container, die mit ihrem Prozesszustand fortgesetzt werden. Ob und wie dieser Endpoint dabei diese Zaehler und Zeitwerte behaelt, ist hier nicht gemessen. Der Block setzt bei einer Wiederaufnahme nichts kuenstlich zurueck und behauptet weder einen neuen Prozess noch einen FlashBoot-Treffer.
+
+On failure, `debug` still contains `gpu`, `model_dir`, `process`, and whatever `phase_ms` was collected before the error.
 
 ## Failure response
 
@@ -293,7 +311,7 @@ When the handler raises or returns an error, the response sets `ok: false` and i
 | `mineru_version` | string | Version that was running |
 | `tier`, `ocr_mode`, `image_analysis` | string \| null, string \| null, bool \| null | How the document was read, as in the success response. Present only when the parse had finished before the failure (a response too large to deliver, an upload that failed); a job that failed earlier carries none of them |
 | `traceback` | string | Last 5 frames of the Python traceback; useful for debugging |
-| `debug` | object | Same shape as the success response — `gpu`, `model_dir`, and whatever `phase_ms` was collected before the failure |
+| `debug` | object | Same shape as the success response — `gpu`, `model_dir`, `process`, and whatever `phase_ms` was collected before the failure |
 
 `error` and `traceback` are normalized before they are returned: URLs inside them keep their scheme, host and path but drop credentials, query and fragment, and very long text is truncated. The same text goes to the worker's logs and, when [OpenTelemetry export](/guides/observability/) is configured, to the collector — so one failure reads the same in all three places.
 

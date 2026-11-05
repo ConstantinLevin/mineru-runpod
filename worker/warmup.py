@@ -55,6 +55,13 @@ from pathlib import Path
 # /worker/test-fixture.pdf`. Module-level so tests can monkeypatch it.
 WARMUP_FIXTURE_PATH = Path("/worker/test-fixture.pdf")
 
+_duration_ms: int | None = None
+
+
+def duration_ms() -> int | None:
+    """Dauer der Aufwaermrunde; None, wenn keine gemessen wurde."""
+    return _duration_ms
+
 
 def _log(msg: str) -> None:
     """Plain stdout breadcrumb — known-good channel."""
@@ -76,6 +83,7 @@ async def warmup_async() -> None:
     also handle subsequent requests. See module docstring for the
     asyncio-boundary rationale.
     """
+    global _duration_ms
     if _truthy(os.environ.get("MINERU_SKIP_WARMUP", "")):
         _log("MINERU_SKIP_WARMUP set, skipping warmup")
         return
@@ -105,6 +113,7 @@ async def warmup_async() -> None:
             await _warmup_once(fixture_bytes, tier=tier, ocr_mode=ocr_mode)
         except Exception as exc:  # noqa: BLE001
             elapsed = time.monotonic() - start
+            _duration_ms = int(elapsed * 1000)
             _telemetry.record_exception(exc)
             _telemetry.histogram_record(
                 "warmup_duration", elapsed, tier=tier, status="error",
@@ -114,6 +123,7 @@ async def warmup_async() -> None:
             return
 
         elapsed = time.monotonic() - start
+        _duration_ms = int(elapsed * 1000)
         _telemetry.histogram_record(
             "warmup_duration", elapsed, tier=tier, status="ok",
         )
