@@ -101,6 +101,7 @@ def process_debug() -> dict[str, Any]:
             "started_at": _process_started_at,
             "uptime_ms": max(0, int((time.monotonic() - _process_started_monotonic) * 1000)),
             "warmup_ms": warmup.duration_ms(),
+            "warmup_status": warmup.status(),
         }
 
 

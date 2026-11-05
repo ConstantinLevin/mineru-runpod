@@ -261,6 +261,7 @@ Every response includes a top-level `debug` block with information that lets you
       "jobs_completed": 0,
       "started_at": "2026-01-01T12:00:00+00:00",
       "warmup_ms": 110250,
+      "warmup_status": "ok",
       "uptime_ms": 112500
     }
   }
@@ -279,7 +280,8 @@ Every response includes a top-level `debug` block with information that lets you
 |---|---|---|
 | `jobs_completed` | int | Anzahl der Handler-Aufrufe, die vor Eintreffen dieses Jobs bereits eine Antwort zurueckgegeben haben, einschliesslich Fehlern und Probes. Die Aufwaermrunde zaehlt nicht. `0` bedeutet, dass noch kein Job abgeschlossen war; bei der Standard-Parallelitaet 1 ist dies der erste Job des Prozesses. Bei hoeherer Parallelitaet koennen mehrere gleichzeitig laufende Jobs `0` melden |
 | `started_at` | string | Startzeit des Python-Worker-Prozesses laut Betriebssystem, ISO 8601 in UTC (`+00:00`); vor Modellladen und Aufwaermrunde |
-| `warmup_ms` | int \| null | Gemessene Dauer der Aufwaermrunde in Millisekunden, auch bei einem fehlgeschlagenen Versuch. `null`, wenn keine Dauer vorliegt (noch nicht aufgerufen, per `MINERU_SKIP_WARMUP` uebersprungen oder Fixture fehlt). Eine Dauer bestaetigt keinen erfolgreichen Warmup |
+| `warmup_ms` | int \| null | Gemessene Dauer der Aufwaermrunde in Millisekunden, auch bei einem fehlgeschlagenen Versuch. `null`, wenn keine Dauer vorliegt (noch nicht aufgerufen, per `MINERU_SKIP_WARMUP` uebersprungen oder Fixture fehlt). Den Ausgang nennt `warmup_status` |
+| `warmup_status` | string | Ausgang der Aufwaermrunde beim Handler-Eintritt: `ok` bei Erfolg, `error` nach einem fehlgeschlagenen Versuch, `skipped` bei `MINERU_SKIP_WARMUP` oder fehlender Fixture, `not_run`, solange noch kein Aufwaermergebnis vorliegt (etwa beim lokalen Start ohne Warmup). Bei `ok` und `error` enthaelt `warmup_ms` die gemessene Dauer; sonst ist sie `null` |
 | `uptime_ms` | int | Alter des Prozesses in Millisekunden beim Handler-Eintritt, einschliesslich der Initialisierung. Aus dem Betriebssystem-Startzeitpunkt auf eine monotone Uhr bezogen; die Bearbeitungsdauer dieses Jobs ist darin nicht enthalten |
 
 Die Angaben beschreiben den Prozess, nicht die RunPod-Warteschlange: `delayTime`, `executionTime` und `workerId` kommen weiterhin aus RunPods Statusantwort. Ein neuer Prozess und lange `delayTime` sind gemeinsam ein Hinweis auf einen Kaltstart; der Prozessblock allein misst keine Kaltstartlatenz.

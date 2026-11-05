@@ -21,6 +21,7 @@ def test_prozessangaben_beim_ersten_und_zweiten_job(fake_mineru, run_job, monkey
 
     monkeypatch.setattr(lifecycle, "_completed_jobs", 0, raising=False)
     monkeypatch.setattr(warmup, "_duration_ms", None)
+    monkeypatch.setattr(warmup, "_status", "not_run")
     first = run_job()
     second = run_job()
 
@@ -37,6 +38,7 @@ def test_prozessangaben_beim_ersten_und_zweiten_job(fake_mineru, run_job, monkey
     assert second["debug"]["process"]["started_at"] == process["started_at"]
     assert 0 <= process["uptime_ms"] <= second["debug"]["process"]["uptime_ms"]
     assert process["warmup_ms"] is None
+    assert process["warmup_status"] == "not_run"
     assert {"gpu", "model_dir", "phase_ms", "tier", "input_format"} <= first["debug"].keys()
 
 

@@ -56,11 +56,17 @@ from pathlib import Path
 WARMUP_FIXTURE_PATH = Path("/worker/test-fixture.pdf")
 
 _duration_ms: int | None = None
+_status = "not_run"
 
 
 def duration_ms() -> int | None:
     """Dauer der Aufwaermrunde; None, wenn keine gemessen wurde."""
     return _duration_ms
+
+
+def status() -> str:
+    """Ausgang der Aufwaermrunde; ohne Ergebnis not_run."""
+    return _status
 
 
 def _log(msg: str) -> None:
@@ -83,14 +89,17 @@ async def warmup_async() -> None:
     also handle subsequent requests. See module docstring for the
     asyncio-boundary rationale.
     """
-    global _duration_ms
+    global _duration_ms, _status
+    _duration_ms, _status = None, "not_run"
     if _truthy(os.environ.get("MINERU_SKIP_WARMUP", "")):
+        _status = "skipped"
         _log("MINERU_SKIP_WARMUP set, skipping warmup")
         return
 
     if not WARMUP_FIXTURE_PATH.is_file():
         # Local pytest / non-container envs won't have the fixture. Don't
         # error; just skip and let lazy load kick in on first request.
+        _status = "skipped"
         _log(f"fixture not found at {WARMUP_FIXTURE_PATH}, skipping warmup")
         return
 
@@ -114,6 +123,7 @@ async def warmup_async() -> None:
         except Exception as exc:  # noqa: BLE001
             elapsed = time.monotonic() - start
             _duration_ms = int(elapsed * 1000)
+            _status = "error"
             _telemetry.record_exception(exc)
             _telemetry.histogram_record(
                 "warmup_duration", elapsed, tier=tier, status="error",
@@ -124,6 +134,7 @@ async def warmup_async() -> None:
 
         elapsed = time.monotonic() - start
         _duration_ms = int(elapsed * 1000)
+        _status = "ok"
         _telemetry.histogram_record(
             "warmup_duration", elapsed, tier=tier, status="ok",
         )

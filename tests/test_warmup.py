@@ -27,7 +27,27 @@ def clean_env(monkeypatch):
     for var in ("MINERU_SKIP_WARMUP", "MINERU_WARMUP_TIER", "MINERU_WARMUP_OCR_MODE"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(warmup_module, "_duration_ms", None)
+    monkeypatch.setattr(warmup_module, "_status", "not_run")
     yield
+
+
+def test_frischer_prozess_hat_noch_keine_aufwaermrunde():
+    """Der Initialwert wird ohne Zustands-Mocks in einem neuen Prozess gelesen."""
+    import json
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-c", (
+            "import json; from worker.lifecycle import process_debug; "
+            "print(json.dumps(process_debug()))"
+        )],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, check=True, timeout=30,
+    )
+    process = json.loads(result.stdout)
+    assert process["warmup_status"] == "not_run"
+    assert process["warmup_ms"] is None
 
 
 def test_warmup_skipped_when_env_var_truthy(monkeypatch, capsys, run_job):
@@ -36,7 +56,9 @@ def test_warmup_skipped_when_env_var_truthy(monkeypatch, capsys, run_job):
     out = capsys.readouterr().out
     assert "MINERU_SKIP_WARMUP set" in out
     assert "skipping" in out
-    assert run_job()["debug"]["process"]["warmup_ms"] is None
+    process = run_job()["debug"]["process"]
+    assert process["warmup_ms"] is None
+    assert process["warmup_status"] == "skipped"
 
 
 @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "Yes", "on", "  1  "])
@@ -68,7 +90,9 @@ def test_warmup_skipped_when_fixture_missing(monkeypatch, capsys, tmp_path, run_
     out = capsys.readouterr().out
     assert "fixture not found" in out
     assert "skipping" in out
-    assert run_job()["debug"]["process"]["warmup_ms"] is None
+    process = run_job()["debug"]["process"]
+    assert process["warmup_ms"] is None
+    assert process["warmup_status"] == "skipped"
 
 
 # -----------------------------------------------------------------------------
@@ -103,7 +127,9 @@ def test_aufwaermdauer_steht_in_der_jobantwort(fake_mineru, run_job, monkeypatch
         fake_mineru.state["error"] = RuntimeError("synthetischer Warmup-Fehler")
     warmup_module.warmup()
     fake_mineru.state["error"] = None
-    assert run_job()["debug"]["process"]["warmup_ms"] == 1250
+    process = run_job()["debug"]["process"]
+    assert process["warmup_ms"] == 1250
+    assert process["warmup_status"] == ("error" if fehlgeschlagen else "ok")
 
 
 def test_warmup_calls_run_mineru_with_warmup_shaped_args(monkeypatch, capsys, tmp_path):
