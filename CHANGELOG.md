@@ -1,3 +1,14 @@
+## [2.1.0](https://github.com/ConstantinLevin/mineru-runpod/compare/v2.0.0...v2.1.0) (2026-11-05)
+
+### Features
+
+* **worker:** melde prozessdaten im debug-block ([#5](https://github.com/ConstantinLevin/mineru-runpod/issues/5)) ([54ff079](https://github.com/ConstantinLevin/mineru-runpod/commit/54ff07975888d5d76ca23fe7e942fd7ce26cd17a))
+
+### Bug Fixes
+
+* **worker:** korrigiere hinweis bei zu grossen antworten ([#4](https://github.com/ConstantinLevin/mineru-runpod/issues/4)) ([798c52b](https://github.com/ConstantinLevin/mineru-runpod/commit/798c52bdde0bb1bcc2ed39aae44ea770254e6369))
+* **worker:** melde den ausgang der aufwaermrunde ([#5](https://github.com/ConstantinLevin/mineru-runpod/issues/5)) ([437cfd0](https://github.com/ConstantinLevin/mineru-runpod/commit/437cfd02ed7744f9ffc42adfcbfc7dc476dd1f02))
+
 ## [2.0.0](https://github.com/ConstantinLevin/mineru-runpod/compare/v1.13.0...v2.0.0) (2026-10-26)
 
 ### ⚠ BREAKING CHANGES
