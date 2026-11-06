@@ -48,6 +48,8 @@ def test_frischer_prozess_hat_noch_keine_aufwaermrunde():
     process = json.loads(result.stdout)
     assert process["warmup_status"] == "not_run"
     assert process["warmup_ms"] is None
+    assert "ready_at_ms" in process
+    assert process["ready_at_ms"] is None
 
 
 def test_warmup_skipped_when_env_var_truthy(monkeypatch, capsys, run_job):

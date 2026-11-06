@@ -89,6 +89,15 @@ _process_created = psutil.Process().create_time()
 _process_started_at = datetime.fromtimestamp(_process_created, timezone.utc).isoformat()
 _process_started_monotonic = time.monotonic() - (time.time() - _process_created)
 _completed_jobs = 0
+_ready_at_ms: int | None = None
+
+
+def mark_ready() -> None:
+    """Erste Bereitschaft zur Jobannahme auf der Prozessuhr festhalten."""
+    global _ready_at_ms
+    with _refresh_lock:
+        if _ready_at_ms is None:
+            _ready_at_ms = max(0, int((time.monotonic() - _process_started_monotonic) * 1000))
 
 
 def process_debug() -> dict[str, Any]:
@@ -100,6 +109,7 @@ def process_debug() -> dict[str, Any]:
             "jobs_completed": _completed_jobs,
             "started_at": _process_started_at,
             "uptime_ms": max(0, int((time.monotonic() - _process_started_monotonic) * 1000)),
+            "ready_at_ms": _ready_at_ms,
             "warmup_ms": warmup.duration_ms(),
             "warmup_status": warmup.status(),
         }
