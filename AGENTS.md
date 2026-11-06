@@ -26,9 +26,18 @@ again.
 
 - **Push to `main` only with the owner's approval of that push.** A merge is a
   push. Green CI, an open PR or an approval of an earlier push is not it.
-- **After every push to `main`, check the build before calling it done.** First
-  that the RunPod template carries the new image tag, then a test job whose
-  response names the installed MinerU version and the reading settings it used.
+- **After every push to `main`, check the build before calling it done.**
+
+  1. Track the build until the RunPod template carries the new image tag.
+  2. Wait for the [rolling release](https://docs.runpod.io/serverless/endpoints/rolling-releases#best-practices)
+     to finish: the endpoint's release list (REST v2,
+     `GET /v2/serverless/{id}/releases`, field `rollout`) must report
+     `inProgress: false` and `workersOnLatest` equal to `workersTotal`, and
+     the worker information must show no worker still using the old image.
+  3. Only then run a test job whose response names the installed MinerU version
+     and the reading settings it used. Match the response to the executing
+     worker (`workerId`) and its image before counting it as acceptance.
+
   The test job costs money: run it on the owner's go.
 
 ## Versioning
