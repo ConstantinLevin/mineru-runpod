@@ -1,9 +1,12 @@
 # Working in this repo
 
-`mineru-runpod` is a published RunPod Hub serverless template. `main` is
-released automatically: every push runs semantic-release, which reads the commit
-titles, decides the next version, tags it, and publishes a GitHub Release. There
-is no separate "release" step a human performs.
+`mineru-runpod` is a published RunPod Hub serverless template. Every push to
+`main` rebuilds the endpoint image through RunPod's GitHub integration. The
+[release workflow](.github/workflows/release.yml) evaluates pushes to `main`,
+unless the head commit message contains `[skip ci]`. semantic-release publishes
+a GitHub Release only when commit analysis calls for one; see the
+[release configuration](.releaserc.json) for commit types and release rules.
+There is no separate "release" step a human performs.
 
 Read that again before you commit anything, because it is the fact behind the
 rule below.
@@ -19,10 +22,10 @@ RunPod builds this repo on two triggers, and `main` sets off both:
 - The Hub listing builds on a new **GitHub Release**, and does not watch
   commits.
 
-So every push to `main` rebuilds the worker the endpoints pull, and every merge
-to `main` also releases. A release is a push of its own: semantic-release
-commits the version and the changelog back to `main`, and that commit is built
-again.
+So every push to `main`, including a merge, rebuilds the worker the endpoints
+pull. Release evaluation follows the workflow above; publication is conditional.
+Only when a release is produced does semantic-release commit the version and
+the changelog back to `main`, and that additional push is built again.
 
 - **Push to `main` only with the owner's approval of that push.** A merge is a
   push. Green CI, an open PR or an approval of an earlier push is not it.
@@ -133,7 +136,8 @@ git diff <old-head> <new-head>                        # must be empty
 `git diff` being empty does not make a force-push safe. It says the content is
 unchanged; it says nothing about where the commits now sit. Making a PR's commits
 reachable from `main` is a merge whatever it is called — and here a merge is a
-release.
+new endpoint image build. Release evaluation and any publication follow the
+workflow and release rules above.
 
 ## Commit format
 
@@ -152,8 +156,11 @@ and are easy to trip:
 - If you changed the job contract, update `docs/content/docs/reference/api.mdx`.
 - If you added an operator env var, add it wherever the env-var tests enumerate
   them; they fail in both directions until the lists agree.
-- `npm run build`, `validate:links` and `validate:routes` in `docs/` when docs
-  changed.
+- `npm run build`, `validate:links` and `validate:routes` in `docs/` when the
+  Docs site or its build workflow changes; see the
+  [Docs workflow](.github/workflows/deploy-docs.yml) for the trigger paths.
+  Changes only to agent or contributor instructions outside those areas do not
+  require an additional site run.
 
 ## Agent skills
 

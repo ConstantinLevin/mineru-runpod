@@ -33,7 +33,7 @@ Please include:
 - Keep PRs small and focused. Independent bug fix + refactor = two PRs.
 - Run the test suite locally: `pip install -e ".[test]" && pytest -v`.
 - New code paths need at least one test. CPU-only tests, please — CI doesn't have a GPU.
-- Don't break the wire contract documented in `handler.py`'s docstring without a major version bump (`fix!`/`feat!` or `BREAKING CHANGE:` footer).
+- For wire-contract or installability breaks, follow [Versioning](AGENTS.md#versioning) and [Never mark a change breaking on your own](AGENTS.md#never-mark-a-change-breaking-on-your-own) in `AGENTS.md`.
 - `CHANGELOG.md` is maintained by semantic-release — do **not** edit it by hand. Write a good commit message instead (see below).
 
 ## Commit message format — Conventional Commits
@@ -69,13 +69,10 @@ Types that **do not** trigger a release:
 | `chore:` | anything else (housekeeping) |
 | `style:` | formatting only |
 
-**Breaking changes** force a major bump regardless of type:
-
-```
-feat(client)!: rename parse_document to parse
-
-BREAKING CHANGE: parse_document is now parse. Callers must update imports.
-```
+For contract and installability breaks, follow [Versioning](AGENTS.md#versioning).
+A breaking marker still forces a major bump under the
+[release configuration](.releaserc.json). For the owner's approval required
+before using one, follow [Never mark a change breaking on your own](AGENTS.md#never-mark-a-change-breaking-on-your-own).
 
 Commitlint runs on every PR — bad messages will be rejected. Locally you can preview with `npx commitlint --from HEAD~1 --to HEAD --verbose`.
 
