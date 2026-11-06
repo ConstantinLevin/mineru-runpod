@@ -262,6 +262,7 @@ Every response includes a top-level `debug` block with information that lets you
       "started_at": "2026-01-01T12:00:00+00:00",
       "warmup_ms": 110250,
       "warmup_status": "ok",
+      "ready_at_ms": 111000,
       "uptime_ms": 112500
     }
   }
@@ -283,8 +284,11 @@ Every response includes a top-level `debug` block with information that lets you
 | `warmup_ms` | int \| null | Gemessene Dauer der Aufwaermrunde in Millisekunden, auch bei einem fehlgeschlagenen Versuch. `null`, wenn keine Dauer vorliegt (noch nicht aufgerufen, per `MINERU_SKIP_WARMUP` uebersprungen oder Fixture fehlt). Den Ausgang nennt `warmup_status` |
 | `warmup_status` | string | Ausgang der Aufwaermrunde beim Handler-Eintritt: `ok` bei Erfolg, `error` nach einem fehlgeschlagenen Versuch, `skipped` bei `MINERU_SKIP_WARMUP` oder fehlender Fixture, `not_run`, solange noch kein Aufwaermergebnis vorliegt (etwa beim lokalen Start ohne Warmup). Bei `ok` und `error` enthaelt `warmup_ms` die gemessene Dauer; sonst ist sie `null` |
 | `uptime_ms` | int | Alter des Prozesses in Millisekunden beim Handler-Eintritt, einschliesslich der Initialisierung. Aus dem Betriebssystem-Startzeitpunkt auf eine monotone Uhr bezogen; die Bearbeitungsdauer dieses Jobs ist darin nicht enthalten |
+| `ready_at_ms` | int \| null | Prozessalter in Millisekunden beim Beginn der Jobannahme, auf derselben monotonen Uhr und mit demselben Prozessstart wie `uptime_ms`. Einmal unmittelbar vor `await scaler.run()` nach Fitnesspruefungen, Aufwaermrunde, Heartbeat, Scaler-Einrichtung und Signalhandlern erfasst. Auch nach fehlgeschlagener oder uebersprungener Aufwaermrunde gesetzt; deren Ergebnis bleibt in `warmup_status`. Vor dieser Messstelle `null`, insbesondere beim lokalen Direktaufruf ohne Bootstrap. Ein gemessener Wert `0` ist gueltig. Ueber alle Jobs und bei fortgesetztem Prozesszustand bleibt die erste Bereitschaft dieses Prozesses erhalten |
 
-Die Angaben beschreiben den Prozess, nicht die RunPod-Warteschlange: `delayTime`, `executionTime` und `workerId` kommen weiterhin aus RunPods Statusantwort. Ein neuer Prozess und lange `delayTime` sind gemeinsam ein Hinweis auf einen Kaltstart; der Prozessblock allein misst keine Kaltstartlatenz.
+`ready_at_ms` ist weder ein UTC-/Epoch-Zeitstempel noch eine Warmup-Dauer. Beide Prozessalter werden auf ganze Millisekunden abgerundet und im Eintritts-Snapshot des Jobs festgehalten. Im gepinnten [RunPod SDK 1.10.0](https://github.com/runpod/runpod-python/blob/v1.10.0/runpod/serverless/modules/rp_scale.py) oeffnet `JobScaler.run()` die HTTP-Sitzung und startet danach die Schleifen fuer Jobannahme, Bearbeitung und Stoppsignale. Die Bereitschaftsgrenze liegt unmittelbar vor diesem Aufruf, nicht beim ersten Job oder nach erfolgreichem Warmup.
+
+Die Angaben beschreiben den Prozess, nicht die RunPod-Warteschlange: `delayTime`, `executionTime` und `workerId` kommen weiterhin aus RunPods Statusantwort. Der Abnehmer kann das Jobwarteintervall vor dem Handler-Eintritt mit der Zeit vor `ready_at_ms` ueberschneiden; `executionTime` wird dafuer nicht von `uptime_ms` abgezogen. Das SDK nimmt Jobs entgegen, reiht sie lokal ein und ruft den Handler ueber `rp_job.run_job()` auf. Der Snapshot misst dessen Eintritt; der serverseitige Endpunkt von `delayTime` wird im SDK nicht gesetzt. Diese Messgrenzen sind daher keine nachgewiesen synchronen Zeitpunkte. Der Prozessblock allein misst keine Kaltstartlatenz.
 
 RunPods [Endpoint-Dokumentation](https://docs.runpod.io/serverless/endpoints/endpoint-configurations#flashboot) beschreibt FlashBoot als Erhalten von Worker-Zustand nach dem Herunterfahren. Der [RunPod-Artikel vom 10.10.2026](https://www.runpod.io/blog/serverless-gpu-cold-starts-flashboot) beschreibt pausierte Container, die mit ihrem Prozesszustand fortgesetzt werden. Ob und wie dieser Endpoint dabei diese Zaehler und Zeitwerte behaelt, ist hier nicht gemessen. Der Block setzt bei einer Wiederaufnahme nichts kuenstlich zurueck und behauptet weder einen neuen Prozess noch einen FlashBoot-Treffer.
 

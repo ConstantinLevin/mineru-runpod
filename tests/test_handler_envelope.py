@@ -20,6 +20,7 @@ def test_prozessangaben_beim_ersten_und_zweiten_job(fake_mineru, run_job, monkey
     from worker import warmup
 
     monkeypatch.setattr(lifecycle, "_completed_jobs", 0, raising=False)
+    monkeypatch.setattr(lifecycle, "_ready_at_ms", None)
     monkeypatch.setattr(warmup, "_duration_ms", None)
     monkeypatch.setattr(warmup, "_status", "not_run")
     first = run_job()
@@ -39,16 +40,22 @@ def test_prozessangaben_beim_ersten_und_zweiten_job(fake_mineru, run_job, monkey
     assert 0 <= process["uptime_ms"] <= second["debug"]["process"]["uptime_ms"]
     assert process["warmup_ms"] is None
     assert process["warmup_status"] == "not_run"
+    assert "ready_at_ms" in process
+    assert process["ready_at_ms"] is None
     assert {"gpu", "model_dir", "phase_ms", "tier", "input_format"} <= first["debug"].keys()
 
 
 @pytest.mark.parametrize("vorher", ["validierung", "parsefehler", "probe", "probe_abgewiesen"])
-def test_auch_fehler_und_probes_zaehlen_als_abgeschlossene_jobs(vorher, fake_mineru, run_job, monkeypatch):
+@pytest.mark.parametrize("bereitschaft", [None, 0, 1250])
+def test_auch_fehler_und_probes_zaehlen_als_abgeschlossene_jobs(
+    vorher, bereitschaft, fake_mineru, run_job, monkeypatch,
+):
     """Eine Fehlerantwort ohne Prozessblock oder ohne Zaehlerfortschritt faellt auf."""
     from worker import lifecycle
 
     monkeypatch.setattr(lifecycle, "_completed_jobs", 0)
     monkeypatch.setattr(lifecycle, "_jobs_processed", 0)
+    monkeypatch.setattr(lifecycle, "_ready_at_ms", bereitschaft)
     if vorher == "validierung":
         first = asyncio.run(handler.handler({"input": {}}))
     elif vorher == "parsefehler":
@@ -61,6 +68,7 @@ def test_auch_fehler_und_probes_zaehlen_als_abgeschlossene_jobs(vorher, fake_min
         first = asyncio.run(handler.handler({"input": {"probe": True}}))
     assert first["ok"] is (vorher == "probe")
     assert first["debug"]["process"]["jobs_completed"] == 0
+    assert first["debug"]["process"]["ready_at_ms"] == bereitschaft
     assert lifecycle.jobs_since_boot() == 0
     assert run_job()["debug"]["process"]["jobs_completed"] == 1
 
@@ -73,6 +81,8 @@ def test_prozesslaufzeit_wird_beim_eintreffen_gemessen(fake_mineru, run_job, mon
     now = [100.0]
     monkeypatch.setattr(lifecycle, "time", SimpleNamespace(monotonic=lambda: now[0]))
     monkeypatch.setattr(lifecycle, "_process_started_monotonic", 50.0)
+    monkeypatch.setattr(lifecycle, "_ready_at_ms", None)
+    lifecycle.mark_ready()
     parser = sys.modules["mineru.parser"]
     parse_async = parser.parse_async
 
@@ -81,8 +91,11 @@ def test_prozesslaufzeit_wird_beim_eintreffen_gemessen(fake_mineru, run_job, mon
         return await parse_async(*args, **kwargs)
 
     monkeypatch.setattr(parser, "parse_async", zeitverbrauchender_parse)
-    assert run_job()["debug"]["process"]["uptime_ms"] == 50000
-    assert run_job()["debug"]["process"]["uptime_ms"] == 75000
+    first = run_job()["debug"]["process"]
+    second = run_job()["debug"]["process"]
+    assert first["uptime_ms"] == 50000
+    assert second["uptime_ms"] == 75000
+    assert first["ready_at_ms"] == second["ready_at_ms"] == 50000
 
 
 def test_resolve_requires_exactly_one_source():

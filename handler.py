@@ -473,9 +473,9 @@ def _bootstrap_main() -> None:
         except (ValueError, OSError) as e:
             _logging.warning("could not install runtime signal handlers", error=repr(e))
 
-        # 5. Serve requests on this same loop. JobScaler.run() blocks
-        # until shutdown is requested.
+        # 5. Bereitschaft markieren und bis zum Shutdown auf derselben Schleife bedienen.
         try:
+            _lifecycle.mark_ready()
             await scaler.run()
         finally:
             # Best-effort flush of OTel buffers so the last batch of

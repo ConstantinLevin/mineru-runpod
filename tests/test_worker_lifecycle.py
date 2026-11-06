@@ -8,11 +8,117 @@
 from __future__ import annotations
 
 import asyncio
+import sys
+from types import SimpleNamespace
 
 import pytest
 
 import handler
 from worker import lifecycle
+
+
+def test_erste_bereitschaft_bleibt_auch_bei_null_erhalten(monkeypatch):
+    """Wiederaufnahme oder erneutes Markieren darf die erste Bereitschaft nicht ersetzen."""
+    now = [50.0]
+    monkeypatch.setattr(lifecycle, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    monkeypatch.setattr(lifecycle, "_process_started_monotonic", 50.0)
+    monkeypatch.setattr(lifecycle, "_ready_at_ms", None)
+    lifecycle.mark_ready()
+    first = lifecycle.process_debug()
+    now[0] = 150.0
+    lifecycle.mark_ready()
+    second = lifecycle.process_debug()
+    assert first["ready_at_ms"] == second["ready_at_ms"] == 0
+    assert (first["uptime_ms"], second["uptime_ms"]) == (0, 100000)
+
+
+@pytest.mark.parametrize(
+    ("warmup_status", "bereitschaft", "dauer", "eintritt"),
+    [
+        ("ok", 66000, 2000, [73000, 75000]),
+        ("error", 66000, 2000, [73000, 75000]),
+        ("skipped", 64000, None, [71000, 73000]),
+    ],
+)
+def test_bereitschaft_nach_vorbereitung_vor_sdk_schleife(
+    fake_mineru, monkeypatch, tmp_path, warmup_status, bereitschaft, dauer, eintritt,
+):
+    """Warmup-Dauer oder erste Jobannahme waeren beide die falsche Messstelle."""
+    from runpod.serverless.modules import rp_fitness, rp_ping, rp_scale
+    from worker import warmup
+
+    now = [100.0]
+    clock = SimpleNamespace(monotonic=lambda: now[0])
+    monkeypatch.setattr(lifecycle, "time", clock)
+    monkeypatch.setattr(warmup, "time", clock)
+    monkeypatch.setattr(lifecycle, "_process_started_monotonic", 50.0)
+    monkeypatch.setattr(lifecycle, "_ready_at_ms", None)
+    monkeypatch.setattr(lifecycle, "_completed_jobs", 0)
+    monkeypatch.setattr(warmup, "_duration_ms", None)
+    monkeypatch.setattr(warmup, "_status", "not_run")
+    monkeypatch.delenv("MINERU_SKIP_WARMUP", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    if warmup_status == "skipped":
+        monkeypatch.setenv("MINERU_SKIP_WARMUP", "1")
+    elif warmup_status == "error":
+        fake_mineru.state["error"] = RuntimeError("synthetischer Warmup-Fehler")
+    fixture = tmp_path / "synthetisch.pdf"
+    fixture.write_bytes(b"%PDF-1.4\nsynthetisch")
+    monkeypatch.setattr(warmup, "WARMUP_FIXTURE_PATH", fixture)
+    parser = sys.modules["mineru.parser"]
+    parse_async = parser.parse_async
+
+    async def parse_mit_dauer(*args, **kwargs):
+        now[0] += 2.0
+        return await parse_async(*args, **kwargs)
+
+    monkeypatch.setattr(parser, "parse_async", parse_mit_dauer)
+
+    async def fitness():
+        assert lifecycle.process_debug()["ready_at_ms"] is None
+        now[0] += 3.0
+
+    class Heartbeat:
+        def start_ping(self):
+            assert lifecycle.process_debug()["ready_at_ms"] is None
+            now[0] += 4.0
+
+    def signal_vorbereiten(*args):
+        assert lifecycle.process_debug()["ready_at_ms"] is None
+        now[0] += 1.0
+
+    responses = []
+
+    class JobScaler:
+        def __init__(self, config):
+            assert lifecycle.process_debug()["ready_at_ms"] is None
+            now[0] += 5.0
+            self.config = config
+
+        async def run(self):
+            process = lifecycle.process_debug()
+            assert process["ready_at_ms"] == bereitschaft
+            assert process["uptime_ms"] == bereitschaft
+            assert process["warmup_ms"] == dauer
+            assert process["warmup_status"] == warmup_status
+            fake_mineru.state["error"] = None
+            now[0] += 7.0
+            for _ in range(2):
+                responses.append(await self.config["handler"]({
+                    "input": {"file_b64": "JVBERi0xLjQK", "transport": "inline"},
+                }))
+
+    monkeypatch.setattr(rp_fitness, "run_fitness_checks", fitness)
+    monkeypatch.setattr(rp_ping, "Heartbeat", Heartbeat)
+    monkeypatch.setattr(rp_scale, "JobScaler", JobScaler)
+    monkeypatch.setattr(handler, "signal", SimpleNamespace(
+        signal=signal_vorbereiten, SIGTERM=15, SIGINT=2,
+    ))
+    handler._bootstrap_main()
+    assert [r["ok"] for r in responses] == [True, True]
+    assert [r["debug"]["process"]["ready_at_ms"] for r in responses] == [bereitschaft, bereitschaft]
+    assert [r["debug"]["process"]["uptime_ms"] for r in responses] == eintritt
+    assert [r["debug"]["process"]["jobs_completed"] for r in responses] == [0, 1]
 
 
 @pytest.fixture(autouse=True)
