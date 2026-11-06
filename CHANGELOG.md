@@ -1,3 +1,9 @@
+## [2.2.0](https://github.com/ConstantinLevin/mineru-runpod/compare/v2.1.0...v2.2.0) (2026-11-06)
+
+### Features
+
+* **worker:** erste bereitschaft zur jobannahme melden ([cb06b2e](https://github.com/ConstantinLevin/mineru-runpod/commit/cb06b2e8d9be20b7ade8ea3daef46f20588dcd05)), closes [#9](https://github.com/ConstantinLevin/mineru-runpod/issues/9)
+
 ## [2.1.0](https://github.com/ConstantinLevin/mineru-runpod/compare/v2.0.0...v2.1.0) (2026-11-05)
 
 ### Features
